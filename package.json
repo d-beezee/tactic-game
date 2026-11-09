@@ -1,0 +1,11 @@
+{
+  "name": "tactics",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @tactics/client dev",
+    "build": "pnpm --filter @tactics/client build",
+    "test": "pnpm --filter @tactics/core test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
