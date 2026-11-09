@@ -18,7 +18,7 @@ const DIR_LIST = Object.keys(DIRS) as Dir[];
 interface UnitSprite { c: Phaser.GameObjects.Container; arrow: Phaser.GameObjects.Graphics; hp: Phaser.GameObjects.Graphics; ring: Phaser.GameObjects.Graphics; img?: Phaser.GameObjects.Image; classId: string }
 
 // 48×48 pixel-art idle frames, one per view facing (view N/E/S/W = screen NE/SE/SW/NW). Classes without art use the placeholder body.
-const SPRITE_CLASSES = ['warrior', 'archer', 'cleric'];
+const SPRITE_CLASSES = ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage'];
 const SPRITE_SCALE = 1.25, SPRITE_FEET_Y = 46 / 48;
 const spriteKey = (classId: string, d: Dir) => `${classId}-${d}`;
 

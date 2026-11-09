@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import demo from '../../../apps/client/src/maps/demo.json';
 import {
   apply, createBattle, createUnit, destinations, planTurn, reachable, rollInitiative, sideOf, validateMap,
-  activeUnit, BattleError, CLASSES, rangeCells, type MapData,
+  activeUnit, BattleError, CLASSES, rangeCells, targetsFor, type MapData,
 } from '../src';
 
 const flat = (w: number, h: number, heights?: number[][]): MapData => ({
@@ -127,5 +127,70 @@ describe('map editing', () => {
     expect(r.heights[1][1]).toBe(3);
     expect(r.spawns.B).toEqual([]); // were on row 9
     expect(r.terrain).toHaveLength(6);
+  });
+});
+
+import { applyBattleXp, classLevel, isUnlocked, levelFromXp, unitFromRoster, unlockedPassives, xpToReach, type RosterUnit } from '../src';
+describe('progression', () => {
+  const unit = (xp: Record<string, number>, classId = 'warrior', passive: string | null = null): RosterUnit => ({ id: 'r', name: 'r', classId, xp, passive });
+
+  it('xp curve: 100, then +50 per level, max 8', () => {
+    expect([2, 3, 4, 8].map(xpToReach)).toEqual([100, 250, 450, 1750]);
+    expect([0, 99, 100, 449, 450, 1750, 99999].map(levelFromXp)).toEqual([1, 1, 2, 3, 4, 8, 8]);
+  });
+
+  it('advanced classes unlock from requirements', () => {
+    expect(isUnlocked(unit({}), 'paladin')).toBe(false);
+    expect(isUnlocked(unit({ warrior: 450, cleric: 99 }), 'paladin')).toBe(false);
+    expect(isUnlocked(unit({ warrior: 450, cleric: 100 }), 'paladin')).toBe(true);
+  });
+
+  it('passives unlock at class level 4', () => {
+    expect(unlockedPassives(unit({ warrior: 449, archer: 450 }))).toEqual(['archer']);
+  });
+
+  it('stats grow 5% per level of the active class; passive applies', () => {
+    const lvl3 = unitFromRoster(unit({ warrior: 250 }), 'A', { x: 0, y: 0 }, 'S');
+    expect(lvl3.level).toBe(3);
+    expect(lvl3.stats.atk).toBe(Math.round(14 * 1.1));
+    expect(lvl3.stats.move).toBe(4);
+    const tough = unitFromRoster(unit({ warrior: 450 }, 'warrior', 'warrior'), 'A', { x: 0, y: 0 }, 'S');
+    expect(tough.stats.maxHp).toBe(Math.round(Math.round(60 * 1.15) * 1.1));
+  });
+
+  it('archer passive extends range of ranged actions', () => {
+    const m = flat(8, 4);
+    const plain = unitFromRoster(unit({}, 'archer'), 'A', { x: 0, y: 0 }, 'E');
+    const hawk = unitFromRoster(unit({ archer: 450 }, 'archer', 'archer'), 'A', { x: 0, y: 0 }, 'E');
+    const far = createUnit('b', 'b', 'B', 'warrior', { x: 5, y: 0 }, 'W');
+    expect(targetsFor(createBattle(m, [plain, far], 1), plain, CLASSES.archer.actions[0])).toEqual([]);
+    expect(targetsFor(createBattle(m, [hawk, far], 1), hawk, CLASSES.archer.actions[0]).map(t => t.id)).toEqual(['b']);
+  });
+
+  it('battle xp: 10 per action, +20 kill, +20 victory to survivors', () => {
+    const m = flat(4, 4);
+    const a = createUnit('a', 'a', 'A', 'warrior', { x: 1, y: 2 }, 'N');
+    const b = createUnit('b', 'b', 'B', 'archer', { x: 1, y: 1 }, 'N');
+    b.hp = 1;
+    let s = createBattle(m, [a, b], 3);
+    if (activeUnit(s).id === 'b') s = apply(s, { type: 'end', facing: 'N' });
+    s = apply(s, { type: 'act', actionId: 'strike', target: { x: 1, y: 1 } });
+    expect(s.winner).toBe('A');
+    expect(s.xp).toEqual({ a: 50, b: 0 });
+  });
+
+  it('applyBattleXp adds to the class used and reports level ups, capped at max', () => {
+    const r = [unit({ warrior: 90 })];
+    const { roster, report } = applyBattleXp(r, [{ id: 'r', classId: 'warrior' }], { r: 20 });
+    expect(classLevel(roster[0], 'warrior')).toBe(2);
+    expect(report).toEqual([{ id: 'r', name: 'r', classId: 'warrior', gained: 20, from: 1, to: 2 }]);
+    expect(applyBattleXp(r, [{ id: 'r', classId: 'warrior' }], { r: 1e9 }).roster[0].xp.warrior).toBe(xpToReach(8));
+  });
+
+  it('parseRoster migrates old saves and rejects locked classes/passives', () => {
+    expect(parseRoster([{ id: 'x', name: 'x', classId: 'archer' }])).toEqual([{ id: 'x', name: 'x', classId: 'archer', xp: {}, passive: null }]);
+    expect(parseRoster([{ id: 'x', name: 'x', classId: 'paladin', xp: {} }])).toBeNull();
+    expect(parseRoster([{ id: 'x', name: 'x', classId: 'warrior', xp: {}, passive: 'warrior' }])).toBeNull();
+    expect(parseRoster([{ id: 'x', name: 'x', classId: 'warrior', xp: { warrior: -5 } }])).toBeNull();
   });
 });

@@ -19,7 +19,8 @@ type Mode =
 export class Controller {
   private mode: Mode = { k: 'busy' };
 
-  constructor(private scene: BattleScene, private state: BattleState) {
+  /** onEnd persists the battle outcome and returns lines for the result screen. */
+  constructor(private scene: BattleScene, private state: BattleState, private onEnd: (s: BattleState) => string[]) {
     scene.events.on('cell', (p: Pos) => void this.onCell(p));
   }
 
@@ -35,7 +36,8 @@ export class Controller {
       this.scene.setActive(null);
       hud.buttons([]);
       hud.banner('');
-      return hud.result(this.state.winner === PLAYER ? 'Vittoria!' : 'Sconfitta', () => location.reload())  // reload = back to menu;
+      // reload = back to menu
+      return hud.result(this.state.winner === PLAYER ? 'Vittoria!' : 'Sconfitta', this.onEnd(this.state), () => location.reload());
     }
     this.scene.setActive(u.id);
     hud.card(u);
@@ -56,7 +58,7 @@ export class Controller {
         onHover: (on: boolean) => {
           if (this.mode.k !== 'idle') return;
           this.scene.clearHighlights();
-          if (on) this.scene.highlight(rangeCells(this.state.map, u.pos, a), actionColor(a), 0.3);
+          if (on) this.scene.highlight(rangeCells(this.state.map, u.pos, a, u.mods.range), actionColor(a), 0.3);
         },
       };
     });
@@ -80,7 +82,7 @@ export class Controller {
     const cells = targetsFor(this.state, this.unit, action).map(t => t.pos);
     this.mode = { k: 'target', action, cells };
     this.scene.clearHighlights();
-    this.scene.highlight(rangeCells(this.state.map, this.unit.pos, action), actionColor(action), 0.18);
+    this.scene.highlight(rangeCells(this.state.map, this.unit.pos, action, this.unit.mods.range), actionColor(action), 0.18);
     this.scene.highlight(cells, actionColor(action));
     hud.banner(`${action.name}: tocca un bersaglio`);
     hud.buttons([{ label: 'Indietro', onClick: () => this.menu() }]);

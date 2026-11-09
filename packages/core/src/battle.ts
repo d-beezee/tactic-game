@@ -31,7 +31,11 @@ export interface BattleState {
   seed: number;
   winner: Team | null;
   events: BattleEvent[];
+  /** class XP earned this battle, by unit id */
+  xp: Record<string, number>;
 }
+
+export const XP_ACTION = 10, XP_KILL = 20, XP_VICTORY = 20;
 
 export class BattleError extends Error {}
 
@@ -48,7 +52,8 @@ export function createBattle(map: MapData, units: Unit[], seed: number): BattleS
     if (n === 0 || n > map.maxDeploy) throw new BattleError(`team ${team} must deploy 1..${map.maxDeploy} units`);
   }
   const init = rollInitiative(units, seed);
-  return { map, units, order: init.order, turn: 0, round: 1, moved: false, acted: false, seed: init.seed, winner: null, events: [] };
+  const xp = Object.fromEntries(units.map(u => [u.id, 0]));
+  return { map, units, order: init.order, turn: 0, round: 1, moved: false, acted: false, seed: init.seed, winner: null, events: [], xp };
 }
 
 export const unitById = (s: BattleState, id: string) => s.units.find(u => u.id === id)!;
@@ -59,14 +64,14 @@ export const living = (s: BattleState) => s.units.filter(u => u.hp > 0);
 export function targetsFor(s: BattleState, unit: Unit, action: ActionDef, from: Pos = unit.pos): Unit[] {
   return living(s).filter(t => {
     if ((t.team === unit.team) !== (action.targets === 'ally')) return false;
-    return inRange(s.map, from, action, t === unit ? from : t.pos);
+    return inRange(s.map, from, action, t === unit ? from : t.pos, unit.mods.range);
   });
 }
 
 /** Pure reducer: returns a new state or throws BattleError. Safe to run on the server with untrusted actions. */
 export function apply(prev: BattleState, action: BattleAction): BattleState {
   if (prev.winner) throw new BattleError('battle is over');
-  const s: BattleState = { ...prev, units: prev.units.map(u => ({ ...u, pos: { ...u.pos } })), events: [] };
+  const s: BattleState = { ...prev, units: prev.units.map(u => ({ ...u, pos: { ...u.pos } })), events: [], xp: { ...prev.xp } };
   const u = activeUnit(s);
 
   switch (action?.type) {
@@ -97,11 +102,16 @@ export function apply(prev: BattleState, action: BattleAction): BattleState {
         const side = sideOf(u.pos, target);
         target.hp = Math.max(0, target.hp - amount);
         s.events.push({ type: 'damage', unitId: target.id, amount, side });
-        if (target.hp === 0) s.events.push({ type: 'ko', unitId: target.id });
+        if (target.hp === 0) {
+          s.events.push({ type: 'ko', unitId: target.id });
+          s.xp[u.id] += XP_KILL;
+        }
       }
+      s.xp[u.id] += XP_ACTION;
       if (target !== u) u.facing = facingToward(u.pos, target.pos);
       s.acted = true;
       s.winner = checkWinner(s.units);
+      if (s.winner) for (const w of s.units) if (w.team === s.winner && w.hp > 0) s.xp[w.id] += XP_VICTORY;
       break;
     }
     case 'end': {

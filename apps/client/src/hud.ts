@@ -38,7 +38,7 @@ export const hud = {
     const { stats } = u;
     c.append(
       Object.assign(document.createElement('div'), { className: 'name', textContent: u.name }),
-      Object.assign(document.createElement('div'), { className: 'cls', textContent: `${CLASSES[u.classId].name} · ${u.team === 'A' ? 'tua squadra' : 'nemico'}` }),
+      Object.assign(document.createElement('div'), { className: 'cls', textContent: `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? ` · ${CLASSES[u.passive].passive.name}` : ''} · ${u.team === 'A' ? 'tua squadra' : 'nemico'}` }),
       Object.assign(document.createElement('div'), { className: 'bar', innerHTML: `<div style="width:${(100 * u.hp) / stats.maxHp}%"></div>` }),
       Object.assign(document.createElement('div'), {
         className: 'stats',
@@ -62,10 +62,12 @@ export const hud = {
     return g;
   },
 
-  result(text: string, onRestart: () => void) {
+  result(text: string, lines: string[], onRestart: () => void) {
     const r = $('result');
     r.innerHTML = '';
-    r.append(Object.assign(document.createElement('h1'), { textContent: text }), button({ label: 'Torna al menu', onClick: onRestart, primary: true }));
+    const list = Object.assign(document.createElement('ul'), { className: 'xp-report' });
+    list.append(...lines.map(l => Object.assign(document.createElement('li'), { textContent: l })));
+    r.append(Object.assign(document.createElement('h1'), { textContent: text }), list, button({ label: 'Torna al menu', onClick: onRestart, primary: true }));
     r.hidden = false;
   },
 };

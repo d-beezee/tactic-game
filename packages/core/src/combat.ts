@@ -20,25 +20,26 @@ export function sideOf(from: Pos, target: Unit): Side {
 export const heightMult = (dh: number) => 1 + 0.05 * Math.max(-4, Math.min(4, dh));
 
 // shortcut: no line-of-sight check for ranged actions; add when maps get walls/pillars.
-export function inRange(map: MapData, from: Pos, action: ActionDef, target: Pos): boolean {
+/** `bonus`: extra range for ranged actions (passive). */
+export function inRange(map: MapData, from: Pos, action: ActionDef, target: Pos, bonus = 0): boolean {
   const d = manhattan(from, target);
   const dh = heightAt(map, from) - heightAt(map, target);
-  if (action.ranged) return d >= action.minRange && d <= action.maxRange + (dh > 0 ? Math.floor(dh / 2) : 0);
+  if (action.ranged) return d >= action.minRange && d <= action.maxRange + bonus + (dh > 0 ? Math.floor(dh / 2) : 0);
   return d >= action.minRange && d <= action.maxRange && Math.abs(dh) <= MELEE_REACH;
 }
 
 /** Every cell an action could reach from `from`, whether or not someone stands there. */
-export function rangeCells(map: MapData, from: Pos, action: ActionDef): Pos[] {
+export function rangeCells(map: MapData, from: Pos, action: ActionDef, bonus = 0): Pos[] {
   const out: Pos[] = [];
-  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (inRange(map, from, action, { x, y })) out.push({ x, y });
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (inRange(map, from, action, { x, y }, bonus)) out.push({ x, y });
   return out;
 }
 
 /** Amount before random variance. Used by the reducer and by the AI / UI preview. */
 export function expectedAmount(map: MapData, actor: Unit, from: Pos, action: ActionDef, target: Unit): number {
   const power = actor.stats[action.stat] * action.power;
-  if (action.effect === 'heal') return Math.round(power * 1.5);
+  if (action.effect === 'heal') return Math.round(power * 1.5 * (1 + actor.mods.healPct / 100));
   const dh = heightAt(map, from) - heightAt(map, target.pos);
   const raw = Math.max(1, power * 2 - target.stats.def);
-  return Math.max(1, Math.round(raw * SIDE_MULT[sideOf(from, target)] * heightMult(dh)));
+  return Math.max(1, Math.round(raw * SIDE_MULT[sideOf(from, target)] * heightMult(dh) * (1 + target.mods.damageTakenPct / 100)));
 }

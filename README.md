@@ -40,7 +40,7 @@ packages/core/      logica di gioco pura: nessuna dipendenza grafica, determinis
   src/map.ts          formato mappa, direzioni, validazione
   src/classes.ts      classi e abilità
   src/units.ts        unità in battaglia
-  src/roster.ts       unità del giocatore fuori dalla battaglia
+  src/roster.ts       unità del giocatore, progressione e XP
   src/pathfinding.ts  caselle raggiungibili (movimento, salto, ostacoli)
   src/combat.ts       gittata, danno, lato colpito
   src/initiative.ts   ordine dei turni
@@ -53,6 +53,7 @@ apps/client/        client Vite + Phaser 3
   src/deploy.ts       schieramento con drag and drop
   src/editor.ts       editor mappe (admin)
   src/maps.ts         mappe di base e mappe salvate
+  src/rosterStore.ts  salvataggio del roster
   src/controller.ts   flusso dei turni e input del giocatore
   src/BattleScene.ts  rendering isometrico, unità, animazioni
   src/hud.ts          interfaccia sopra la mappa
@@ -70,8 +71,29 @@ La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo sta
 - **Movimento:** la classe decide quante caselle si percorrono (`move`) e quanto dislivello si può superare a ogni passo (`jump`). Si può passare attraverso gli alleati, non attraverso i nemici.
 - **Danno:** un colpo sul fianco fa ×1.25, uno alle spalle ×1.5. Ogni livello di altezza in più rispetto al bersaglio aggiunge il 5% di danno (massimo 4 livelli).
 - **Gittata:** il corpo a corpo raggiunge al massimo 2 livelli di dislivello. Gli attacchi a distanza guadagnano 1 casella di gittata ogni 2 livelli di altezza in più.
-- **Classi:** Guerriero, Arciere e Chierico. Il Chierico può curare.
+- **Classi base:** Guerriero, Arciere e Chierico. Il Chierico può curare.
 - **Vittoria:** vince chi elimina tutte le unità avversarie.
+
+## Progressione
+
+- **Livelli:** ogni classe ha il suo livello, da 1 a 8. Le statistiche dipendono dalla classe attiva e dal suo livello: +5% per livello su PV, attacco, difesa, magia e velocità. Movimento e salto non crescono.
+- **XP:** va alla classe attiva. Ogni azione dà 10 XP, un'eliminazione +20, la vittoria +20 a chi è ancora in piedi. Il livello 2 costa 100 XP, e ogni livello successivo costa 50 XP in più del precedente (livello 4 = 450 XP totali, livello 8 = 1750).
+- **Classi avanzate:** si sbloccano con i livelli delle altre classi.
+  - Paladino: Guerriero 4 + Chierico 2.
+  - Ranger: Arciere 4 + Guerriero 2.
+  - Saggio: Chierico 4 + Arciere 2.
+- **Passive:** ogni classe sblocca la sua al livello 4. Ogni unità ne equipaggia una (1 slot), da scegliere in caserma.
+
+| Classe | Passiva | Effetto |
+|---|---|---|
+| Guerriero | Tempra | +10% PV massimi |
+| Arciere | Occhio di falco | +1 gittata alle azioni a distanza |
+| Chierico | Grazia | +25% alle cure |
+| Paladino | Scudo sacro | -10% danni subiti |
+| Ranger | Passo leggero | +1 movimento |
+| Saggio | Concentrazione | +15% magia |
+
+Nella battaglia di prova i nemici hanno il livello medio delle classi attive del roster. Il codice è in `packages/core/src/roster.ts` (curva XP, sblocchi, `applyBattleXp`) e in `units.ts` (crescita delle statistiche ed effetti delle passive).
 
 ## Formato mappa
 
@@ -115,7 +137,6 @@ Dal menu, "Editor mappe".
 
 ## Roadmap
 
-1. Albero delle classi: requisiti per le classi avanzate, XP a ogni azione, passive sbloccate.
-2. Backend Node + Postgres: account, roster, equipaggiamento, negozio.
-3. Missioni: campagna a capitoli e missioni giornaliere create dall'admin, con ricompense in denaro.
-4. PvP live a turni con livelli normalizzati e server autoritativo.
+1. Backend Node + Postgres: account, roster, equipaggiamento, negozio.
+2. Missioni: campagna a capitoli e missioni giornaliere create dall'admin, con ricompense in denaro.
+3. PvP live a turni con livelli normalizzati e server autoritativo.

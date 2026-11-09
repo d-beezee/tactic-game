@@ -1,4 +1,4 @@
-import { CLASSES, createUnit, key, samePos, type MapData, type Pos, type RosterUnit, type Unit } from '@tactics/core';
+import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Unit } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
 
@@ -42,7 +42,7 @@ export class Deploy {
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
       const item = Object.assign(document.createElement('div'), { className: 'tray-item' });
       item.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
-      item.onpointerdown = e => { hud.card(createUnit(r.id, r.name, 'A', r.classId, { x: 0, y: 0 }, 'S')); this.startDrag({ kind: 'tray', r }, e); };
+      item.onpointerdown = e => { hud.card(unitFromRoster(r, 'A', { x: 0, y: 0 }, 'S')); this.startDrag({ kind: 'tray', r }, e); };
       return item;
     });
     const trayBox = Object.assign(document.createElement('div'), { className: 'tray' });
@@ -110,7 +110,7 @@ export class Deploy {
     if (!this.isSpawn(target)) return;
     if (occupant) this.remove(occupant);                               // replace: occupant back to the tray
     else if (this.placed.length >= this.max) return; // full: the banner already shows N/N
-    const u = createUnit(src.r.id, src.r.name, 'A', src.r.classId, target, 'S');
+    const u = unitFromRoster(src.r, 'A', target, 'S');
     this.placed.push(u);
     this.scene.addUnit(u);
     hud.card(u);
