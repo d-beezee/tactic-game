@@ -11,13 +11,13 @@ const TILE_SRC_W = 132, TILE_TOP_CY = 33;
 const TILE_FOR: Record<Terrain, string> = { grass: 'grass', dirt: 'dirt', stone: 'stone', water: 'water', blocked: 'grass' };
 const FILLER = 'dirt';
 
-/** Screen position of the centre of a cell's top face. */
-export const iso = (x: number, y: number, h: number) => ({ x: ((x - y) * TW) / 2, y: ((x + y) * TH) / 2 - h * HS });
-const depthOf = (p: Pos) => (p.x + p.y) * 10;
+/** Screen position of the centre of a cell's top face, from VIEW coordinates (after camera rotation). */
+const iso = (x: number, y: number, h: number) => ({ x: ((x - y) * TW) / 2, y: ((x + y) * TH) / 2 - h * HS });
+const DIR_LIST = Object.keys(DIRS) as Dir[];
 
 interface UnitSprite { c: Phaser.GameObjects.Container; arrow: Phaser.GameObjects.Graphics; hp: Phaser.GameObjects.Graphics; ring: Phaser.GameObjects.Graphics; img?: Phaser.GameObjects.Image; classId: string }
 
-// 48×48 pixel-art idle frames, one per grid facing (grid N/E/S/W = screen NE/SE/SW/NW). Classes without art use the placeholder body.
+// 48×48 pixel-art idle frames, one per view facing (view N/E/S/W = screen NE/SE/SW/NW). Classes without art use the placeholder body.
 const SPRITE_CLASSES = ['warrior', 'archer', 'cleric'];
 const SPRITE_SCALE = 1.25, SPRITE_FEET_Y = 46 / 48;
 const spriteKey = (classId: string, d: Dir) => `${classId}-${d}`;
@@ -31,6 +31,10 @@ export class BattleScene extends Phaser.Scene {
   private sprites = new Map<string, UnitSprite>();
   private hits = new Map<string, { p: Pos; poly: Phaser.Geom.Polygon; depth: number }>();
   private cellObjects = new Map<string, Phaser.GameObjects.GameObject[]>();
+  /** Camera rotation in 90° steps. Game logic stays in grid coordinates; only drawing uses view coordinates. */
+  private rot = 0;
+  private units = new Map<string, Unit>();
+  private lit: { cells: Pos[]; color: number; alpha: number }[] = [];
 
   constructor(
     private mapData: MapData,
@@ -41,13 +45,58 @@ export class BattleScene extends Phaser.Scene {
     super('battle');
   }
 
+  // ---------- grid ↔ view ----------
+
+  private view(p: Pos): Pos {
+    let { x, y } = p, w = this.mapData.width, h = this.mapData.height;
+    for (let i = 0; i < this.rot; i++) [x, y, w, h] = [h - 1 - y, x, h, w];
+    return { x, y };
+  }
+
+  private viewDims() {
+    const { width: w, height: h } = this.mapData;
+    return this.rot % 2 ? { w: h, h: w } : { w, h };
+  }
+
+  /** Where a cell is drawn: grid pos + height to world coordinates. */
+  private at(p: Pos, h = heightAt(this.mapData, p)) {
+    const v = this.view(p);
+    return iso(v.x, v.y, h);
+  }
+
+  private depthOf(p: Pos) {
+    const v = this.view(p);
+    return (v.x + v.y) * 10;
+  }
+
+  private rotateDir(d: Dir, steps: number): Dir {
+    let x: number = DIRS[d].x, y: number = DIRS[d].y;
+    for (let i = 0; i < ((steps % 4) + 4) % 4; i++) [x, y] = [-y, x];
+    return DIR_LIST.find(k => DIRS[k].x === x && DIRS[k].y === y)!;
+  }
+
+  /** Grid facing as seen on screen. */
+  private viewDir(d: Dir): Dir { return this.rotateDir(d, this.rot); }
+
+  /** Screen direction (as the HUD arrows show it) back to a grid facing. */
+  gridDir(screen: Dir): Dir { return this.rotateDir(screen, -this.rot); }
+
+  /** Rotate the camera by 90° steps; redraws map, units and current highlights. */
+  rotate(steps: 1 | -1) {
+    this.rot = (this.rot + steps + 4) % 4;
+    const lit = this.lit;
+    this.setMap(this.mapData);
+    for (const u of this.units.values()) this.syncUnit(u);
+    for (const l of lit) this.highlight(l.cells, l.color, l.alpha);
+  }
+
   preload() {
     for (const t of ['grass', 'dirt', 'stone', 'water']) this.load.image(t, `tiles/${t}.png`);
-    for (const c of SPRITE_CLASSES) for (const d of Object.keys(DIRS) as Dir[]) this.load.image(spriteKey(c, d), `units/${c}/${d}.png`);
+    for (const c of SPRITE_CLASSES) for (const d of DIR_LIST) this.load.image(spriteKey(c, d), `units/${c}/${d}.png`);
   }
 
   create() {
-    for (const c of SPRITE_CLASSES) for (const d of Object.keys(DIRS) as Dir[]) this.textures.get(spriteKey(c, d)).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    for (const c of SPRITE_CLASSES) for (const d of DIR_LIST) this.textures.get(spriteKey(c, d)).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.setMap(this.mapData);
     for (const u of this.initialUnits) this.addUnit(u);
     this.scale.on('resize', () => this.fitCamera());
@@ -60,6 +109,7 @@ export class BattleScene extends Phaser.Scene {
     this.cellObjects.clear();
     this.hits.clear();
     this.overlays.clear();
+    this.lit = [];
     this.mapData = m;
     for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) this.drawCell({ x, y });
     this.fitCamera();
@@ -76,17 +126,17 @@ export class BattleScene extends Phaser.Scene {
     const m = this.mapData;
     const objs: Phaser.GameObjects.GameObject[] = [];
     const h = heightAt(m, p), t = terrainAt(m, p);
-    const c = iso(p.x, p.y, h), down = h * HS + BASE;
+    const c = this.at(p, h), down = h * HS + BASE, depth = this.depthOf(p);
     const top = { x: c.x, y: c.y - TH / 2 }, right = { x: c.x + TW / 2, y: c.y }, bottom = { x: c.x, y: c.y + TH / 2 }, left = { x: c.x - TW / 2, y: c.y };
     // stack one block per height step: filler blocks below, terrain block on top
     for (let l = 0; l <= h; l++) {
       const tex = l === h ? TILE_FOR[t] : FILLER;
-      const at = iso(p.x, p.y, l);
-      const img = this.add.image(at.x, at.y, tex).setDepth(depthOf(p) + l * 0.05);
+      const at = this.at(p, l);
+      const img = this.add.image(at.x, at.y, tex).setDepth(depth + l * 0.05);
       img.setOrigin(0.5, TILE_TOP_CY / img.height).setScale(TW / TILE_SRC_W);
       objs.push(img);
     }
-    const g = this.add.graphics().setDepth(depthOf(p) + 0.9);
+    const g = this.add.graphics().setDepth(depth + 0.9);
     g.lineStyle(1, 0x000000, 0.18).strokePoints([top, right, bottom, left], true);
     if (t === 'blocked') {
       // a pine tree: impassable marker
@@ -96,19 +146,19 @@ export class BattleScene extends Phaser.Scene {
     // hit area covers the whole visible column, so tapping a cliff face picks the cell in front
     const hit = new Phaser.Geom.Polygon([top, right, { x: right.x, y: right.y + down }, { x: bottom.x, y: bottom.y + down }, { x: left.x, y: left.y + down }, left]);
     g.setInteractive(hit, Phaser.Geom.Polygon.Contains);
-    this.hits.set(key(p), { p, poly: hit, depth: depthOf(p) });
+    this.hits.set(key(p), { p, poly: hit, depth });
     g.on('pointerdown', () => this.events.emit('cell', p));
-    const overlay = this.add.graphics().setDepth(depthOf(p) + 1);
+    const overlay = this.add.graphics().setDepth(depth + 1);
     this.overlays.set(key(p), overlay);
     objs.push(g, overlay);
     this.cellObjects.set(key(p), objs);
   }
 
   private fitCamera() {
-    const m = this.mapData;
-    const maxH = Math.max(...m.heights.flat());
-    const minX = iso(0, m.height - 1, 0).x - TW / 2, maxX = iso(m.width - 1, 0, 0).x + TW / 2;
-    const minY = iso(0, 0, maxH).y - TH / 2 - UNIT_TOP, maxY = iso(m.width - 1, m.height - 1, 0).y + TH / 2 + BASE;
+    const maxH = Math.max(...this.mapData.heights.flat());
+    const v = this.viewDims();
+    const minX = iso(0, v.h - 1, 0).x - TW / 2, maxX = iso(v.w - 1, 0, 0).x + TW / 2;
+    const minY = iso(0, 0, maxH).y - TH / 2 - UNIT_TOP, maxY = iso(v.w - 1, v.h - 1, 0).y + TH / 2 + BASE;
     const { width, height } = this.scale;
     const ins = this.insets(width, height);
     const cam = this.cameras.main;
@@ -129,6 +179,7 @@ export class BattleScene extends Phaser.Scene {
   removeUnit(id: string) {
     this.sprites.get(id)?.c.destroy();
     this.sprites.delete(id);
+    this.units.delete(id);
   }
 
   addUnit(u: Unit) {
@@ -157,14 +208,16 @@ export class BattleScene extends Phaser.Scene {
 
   syncUnit(u: Unit) {
     const s = this.sprites.get(u.id)!;
-    const p = iso(u.pos.x, u.pos.y, heightAt(this.mapData, u.pos));
-    s.c.setPosition(p.x, p.y).setDepth(depthOf(u.pos) + 5);
+    this.units.set(u.id, u);
+    const p = this.at(u.pos);
+    s.c.setPosition(p.x, p.y + (u.hp <= 0 && s.c.alpha < 1 ? 8 : 0)).setDepth(this.depthOf(u.pos) + 5);
     this.face(s, u.facing);
     s.hp.clear().fillStyle(0x000000, 0.6).fillRect(-16, -64, 32, 5).fillStyle(u.hp / u.stats.maxHp > 0.35 ? 0x6cc04a : 0xf2c14e).fillRect(-16, -64, (32 * u.hp) / u.stats.maxHp, 5);
     if (u.hp <= 0 && s.c.alpha === 1) this.tweens.add({ targets: s.c, alpha: 0, y: p.y + 8, duration: 400 });
   }
 
-  private face(s: UnitSprite, f: Dir) {
+  private face(s: UnitSprite, gridFacing: Dir) {
+    const f = this.viewDir(gridFacing);
     s.img?.setTexture(spriteKey(s.classId, f));
     const d = DIRS[f];
     const v = { x: ((d.x - d.y) * TW) / 2, y: ((d.x + d.y) * TH) / 2 };
@@ -181,8 +234,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   highlight(cells: Pos[], color: number, alpha = 0.45) {
+    this.lit.push({ cells, color, alpha });
     for (const p of cells) {
-      const c = iso(p.x, p.y, heightAt(this.mapData, p));
+      const c = this.at(p);
       const pts = [{ x: c.x, y: c.y - TH / 2 + 2 }, { x: c.x + TW / 2 - 3, y: c.y }, { x: c.x, y: c.y + TH / 2 - 2 }, { x: c.x - TW / 2 + 3, y: c.y }];
       this.overlays.get(key(p))!.fillStyle(color, alpha).fillPoints(pts, true).lineStyle(2, color, Math.min(1, alpha * 2)).strokePoints(pts, true);
     }
@@ -190,6 +244,7 @@ export class BattleScene extends Phaser.Scene {
 
   clearHighlights() {
     for (const g of this.overlays.values()) g.clear();
+    this.lit = [];
   }
 
   async animateMove(unitId: string, path: Pos[]) {
@@ -197,9 +252,9 @@ export class BattleScene extends Phaser.Scene {
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1], b = path[i];
       const ha = heightAt(this.mapData, a), hb = heightAt(this.mapData, b);
-      const to = iso(b.x, b.y, hb);
-      this.face(s, (Object.keys(DIRS) as Dir[]).find(d => DIRS[d].x === b.x - a.x && DIRS[d].y === b.y - a.y)!);
-      s.c.setDepth(Math.max(depthOf(a), depthOf(b)) + 5);
+      const to = this.at(b, hb);
+      this.face(s, DIR_LIST.find(d => DIRS[d].x === b.x - a.x && DIRS[d].y === b.y - a.y)!);
+      s.c.setDepth(Math.max(this.depthOf(a), this.depthOf(b)) + 5);
       const startX = s.c.x, startY = s.c.y;
       // small hop when the height changes
       const hop = ha !== hb ? 14 : 0;
@@ -218,7 +273,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   floatText(unit: Unit, text: string, color: string) {
-    const p = iso(unit.pos.x, unit.pos.y, heightAt(this.mapData, unit.pos));
+    const p = this.at(unit.pos);
     const t = this.add.text(p.x, p.y - 64, text, { fontFamily: 'system-ui', fontSize: '22px', fontStyle: 'bold', color, stroke: '#1b1712', strokeThickness: 4 })
       .setOrigin(0.5).setDepth(10_000);
     this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 900, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });

@@ -4,6 +4,7 @@ import {
   type MapData, type Pos, type Team,
 } from '@tactics/core';
 import { BattleScene, TEAM_COLOR, type Insets } from './BattleScene';
+import { mountRotate } from './hud';
 import { allMaps, deleteMap, isBuiltin, saveMap } from './maps';
 
 type Tool =
@@ -37,9 +38,11 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: object = {}, .
 export function startEditor() {
   const root = document.getElementById('editor')!;
   root.hidden = false;
+  document.body.classList.add('editing');
   const first = blankMap(newId());
   const scene = new BattleScene(first, [], s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
+    mountRotate(s);
     new Editor(s, root, first).start();
   }, editorInsets);
   new Phaser.Game({

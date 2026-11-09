@@ -91,7 +91,7 @@ export class Controller {
     this.scene.clearHighlights();
     hud.banner('Scegli la direzione (o tocca una casella)');
     const back = this.state.moved && this.state.acted ? [] : [{ label: 'Indietro', onClick: () => this.menu() }];
-    hud.buttons([...back, hud.dirs(d => void this.end(d))]);
+    hud.buttons([...back, hud.dirs(d => void this.end(this.scene.gridDir(d)))]);
   }
 
   private async end(facing: Dir) {

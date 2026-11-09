@@ -61,7 +61,7 @@ apps/client/        client Vite + Phaser 3
   public/units/       sprite delle unità
 ```
 
-La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il futuro server PvP potrà usare la stessa funzione per validare le mosse. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
+La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il futuro server PvP potrà usare la stessa funzione per validare le mosse. La telecamera ruota a scatti di 90° (pulsanti ⟲ ⟳ o tasti Q/E): la logica resta in coordinate di griglia, e solo `BattleScene` converte in coordinate di vista. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
 
 ## Regole
 
@@ -108,9 +108,8 @@ Dal menu, "Editor mappe".
 
 - Roster e mappe sono salvati in `localStorage`: vengono persi in una finestra privata o se si cancellano i dati del sito.
 - L'editor non ha un accesso riservato: è aperto a chiunque apra il gioco.
-- Nell'editor una colonna alta copre le caselle dietro di sé, che non si possono modificare finché non la abbassi.
 - Gli attacchi a distanza non controllano la linea di tiro.
-- Non si può ruotare la telecamera né zoomare con le dita.
+- Non si può zoomare con le dita.
 - Le sprite hanno solo la posa ferma.
 - In battaglia non si può annullare un movimento.
 

@@ -69,3 +69,19 @@ export const hud = {
     r.hidden = false;
   },
 };
+
+/** ⟲ ⟳ buttons plus Q/E keys to rotate the camera. */
+export function mountRotate(scene: { rotate(steps: 1 | -1): void }) {
+  const box = $('rotate');
+  box.replaceChildren(
+    button({ label: '⟲', onClick: () => scene.rotate(-1) }),
+    button({ label: '⟳', onClick: () => scene.rotate(1) }),
+  );
+  box.querySelectorAll('button').forEach((b, i) => (b.title = i ? 'Ruota a destra (E)' : 'Ruota a sinistra (Q)'));
+  box.hidden = false;
+  window.addEventListener('keydown', e => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.repeat) return;
+    if (e.key === 'q' || e.key === 'Q') scene.rotate(-1);
+    if (e.key === 'e' || e.key === 'E') scene.rotate(1);
+  });
+}

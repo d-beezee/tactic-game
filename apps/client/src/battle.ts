@@ -3,6 +3,7 @@ import { createBattle, createUnit, validateMap, type MapData, type RosterUnit } 
 import { BattleScene } from './BattleScene';
 import { Controller } from './controller';
 import { Deploy } from './deploy';
+import { mountRotate } from './hud';
 
 const ENEMY_CLASSES = ['warrior', 'archer', 'cleric'];
 const ENEMY_NAMES = ['Grosk', 'Vespa', 'Mordo', 'Ruggine', 'Sterpo', 'Nebbia', 'Ghigno', 'Corvo'];
@@ -18,6 +19,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
   document.getElementById('hud')!.hidden = false;
   const scene = new BattleScene(map, enemies, s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
+    mountRotate(s);
     new Deploy(s, map, roster, team => {
       // createBattle re-validates positions and deploy count
       const state = createBattle(map, [...team, ...enemies], Date.now() >>> 0);
