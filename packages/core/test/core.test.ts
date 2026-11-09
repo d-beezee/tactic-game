@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import demo from '../../../apps/client/src/maps/demo.json';
 import {
   apply, createBattle, createUnit, destinations, planTurn, reachable, rollInitiative, sideOf, validateMap,
-  activeUnit, BattleError, type MapData,
+  activeUnit, BattleError, CLASSES, rangeCells, type MapData,
 } from '../src';
 
 const flat = (w: number, h: number, heights?: number[][]): MapData => ({
@@ -43,6 +43,13 @@ describe('combat', () => {
     expect(sideOf({ x: 5, y: 4 }, t)).toBe('front');
     expect(sideOf({ x: 6, y: 5 }, t)).toBe('flank');
     expect(sideOf({ x: 5, y: 6 }, t)).toBe('back');
+  });
+  it('range cells respect min/max range and melee height reach', () => {
+    const m = flat(5, 5, [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 3, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]);
+    const strike = CLASSES.warrior.actions[0], shoot = CLASSES.archer.actions[0];
+    const melee = rangeCells(m, { x: 2, y: 2 }, strike).map(p => `${p.x},${p.y}`).sort();
+    expect(melee).toEqual(['1,2', '2,1', '2,3']); // (3,2) is 3 levels up: out of melee reach
+    expect(rangeCells(m, { x: 2, y: 2 }, shoot).some(p => p.x === 2 && p.y === 2)).toBe(false); // min range 2
   });
   it('back attack hits harder than front', () => {
     const m = flat(4, 4);

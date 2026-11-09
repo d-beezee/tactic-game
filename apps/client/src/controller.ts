@@ -1,11 +1,12 @@
 import {
-  CLASSES, activeUnit, apply, destinations, facingToward, key, planTurn, samePos, targetsFor,
+  CLASSES, activeUnit, apply, rangeCells, destinations, facingToward, key, planTurn, samePos, targetsFor,
   type ActionDef, type BattleAction, type BattleState, type Dir, type Pos,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
 
 const PLAYER = 'A';
+const actionColor = (a: ActionDef) => (a.effect === 'heal' ? 0x6cc04a : 0xff5a4f);
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 type Mode =
@@ -50,7 +51,14 @@ export class Controller {
     hud.banner(`Turno di ${u.name} · round ${this.state.round}`);
     const actions = CLASSES[u.classId].actions.map(a => {
       const n = targetsFor(this.state, u, a).length;
-      return { label: a.name, hint: this.state.acted ? 'già fatto' : n ? undefined : 'nessun bersaglio', disabled: this.state.acted || !n, onClick: () => this.target(a) };
+      return {
+        label: a.name, hint: this.state.acted ? 'già fatto' : n ? undefined : 'nessun bersaglio', disabled: this.state.acted || !n, onClick: () => this.target(a),
+        onHover: (on: boolean) => {
+          if (this.mode.k !== 'idle') return;
+          this.scene.clearHighlights();
+          if (on) this.scene.highlight(rangeCells(this.state.map, u.pos, a), actionColor(a), 0.3);
+        },
+      };
     });
     hud.buttons([
       { label: 'Muovi', hint: this.state.moved ? 'già fatto' : undefined, disabled: this.state.moved, onClick: () => this.move() },
@@ -72,7 +80,8 @@ export class Controller {
     const cells = targetsFor(this.state, this.unit, action).map(t => t.pos);
     this.mode = { k: 'target', action, cells };
     this.scene.clearHighlights();
-    this.scene.highlight(cells, action.effect === 'heal' ? 0x6cc04a : 0xff5a4f);
+    this.scene.highlight(rangeCells(this.state.map, this.unit.pos, action), actionColor(action), 0.18);
+    this.scene.highlight(cells, actionColor(action));
     hud.banner(`${action.name}: tocca un bersaglio`);
     hud.buttons([{ label: 'Indietro', onClick: () => this.menu() }]);
   }
@@ -137,7 +146,7 @@ export class Controller {
     for (const a of planTurn(this.state)) {
       if (a.type === 'act') {
         const action = CLASSES[this.unit.classId].actions.find(x => x.id === a.actionId)!;
-        this.scene.highlight([a.target], action.effect === 'heal' ? 0x6cc04a : 0xff5a4f);
+        this.scene.highlight([a.target], actionColor(action));
         await wait(350);
       }
       await this.commit(a);

@@ -180,11 +180,11 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  highlight(cells: Pos[], color: number) {
+  highlight(cells: Pos[], color: number, alpha = 0.45) {
     for (const p of cells) {
       const c = iso(p.x, p.y, heightAt(this.mapData, p));
       const pts = [{ x: c.x, y: c.y - TH / 2 + 2 }, { x: c.x + TW / 2 - 3, y: c.y }, { x: c.x, y: c.y + TH / 2 - 2 }, { x: c.x - TW / 2 + 3, y: c.y }];
-      this.overlays.get(key(p))!.fillStyle(color, 0.45).fillPoints(pts, true).lineStyle(2, color, 0.95).strokePoints(pts, true);
+      this.overlays.get(key(p))!.fillStyle(color, alpha).fillPoints(pts, true).lineStyle(2, color, Math.min(1, alpha * 2)).strokePoints(pts, true);
     }
   }
 

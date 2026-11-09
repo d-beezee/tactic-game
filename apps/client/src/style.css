@@ -38,6 +38,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   background: #3a322a; color: var(--text); box-shadow: 0 3px 0 #120f0c; cursor: pointer; }
 #buttons button.primary { background: var(--gold); color: #1b1712; }
 #buttons button:active { transform: translateY(2px); box-shadow: 0 1px 0 #120f0c; }
+.btn-wrap { display: inline-flex; }
+.btn-wrap button:disabled { pointer-events: none; }
 #buttons button:disabled { opacity: .55; cursor: default; }
 #buttons button small { display: block; font-size: 11px; font-weight: 500; }
 #buttons .dirs { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px; }

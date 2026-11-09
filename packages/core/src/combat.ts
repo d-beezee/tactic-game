@@ -27,6 +27,13 @@ export function inRange(map: MapData, from: Pos, action: ActionDef, target: Pos)
   return d >= action.minRange && d <= action.maxRange && Math.abs(dh) <= MELEE_REACH;
 }
 
+/** Every cell an action could reach from `from`, whether or not someone stands there. */
+export function rangeCells(map: MapData, from: Pos, action: ActionDef): Pos[] {
+  const out: Pos[] = [];
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (inRange(map, from, action, { x, y })) out.push({ x, y });
+  return out;
+}
+
 /** Amount before random variance. Used by the reducer and by the AI / UI preview. */
 export function expectedAmount(map: MapData, actor: Unit, from: Pos, action: ActionDef, target: Unit): number {
   const power = actor.stats[action.stat] * action.power;

@@ -1,17 +1,23 @@
 import { CLASSES, unitById, type BattleState, type Unit } from '@tactics/core';
 
-export interface Btn { label: string; hint?: string; onClick: () => void; disabled?: boolean; primary?: boolean }
+export interface Btn { label: string; hint?: string; onClick: () => void; disabled?: boolean; primary?: boolean; onHover?: (on: boolean) => void }
 
 const $ = (id: string) => document.getElementById(id)!;
 
-function button(b: Btn): HTMLButtonElement {
+function button(b: Btn): HTMLElement {
   const el = document.createElement('button');
   el.textContent = b.label;
   if (b.hint) el.append(Object.assign(document.createElement('small'), { textContent: b.hint }));
   el.disabled = !!b.disabled;
   if (b.primary) el.className = 'primary';
   el.onclick = b.onClick;
-  return el;
+  if (!b.onHover) return el;
+  // disabled buttons get no mouse events, so the wrapper listens instead
+  const wrap = Object.assign(document.createElement('span'), { className: 'btn-wrap' });
+  wrap.append(el);
+  wrap.onpointerenter = () => b.onHover!(true);
+  wrap.onpointerleave = () => b.onHover!(false);
+  return wrap;
 }
 
 export const hud = {
