@@ -19,8 +19,19 @@ pnpm install
 pnpm dev        # avvia il client (Vite), raggiungibile anche dalla rete locale
 pnpm test       # test della logica di gioco (vitest)
 pnpm typecheck  # controllo dei tipi su tutti i pacchetti
-pnpm build      # build di produzione del client
+pnpm build      # typecheck + build di produzione del client in ./dist
 ```
+
+## Deploy (Coolify + Railpack)
+
+Il gioco per ora è un sito statico. Railpack lo compila con `pnpm build` e serve la cartella `dist/` con Caddy, sulla porta 80 (o su `$PORT` se è impostata).
+
+In Coolify:
+1. Crea una risorsa dal repository e scegli **Railpack** come build pack.
+2. In **Ports Exposes** metti `80`.
+3. Se il build non riconosce il sito statico, aggiungi la variabile `RAILPACK_SPA_OUTPUT_DIR=dist`.
+
+Le versioni di Node e pnpm sono fissate in `package.json` (`engines.node`, `packageManager`) e in `railpack.json`.
 
 ## Struttura
 

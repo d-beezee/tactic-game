@@ -4,8 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @tactics/client dev",
-    "build": "pnpm --filter @tactics/client build",
+    "build": "pnpm typecheck && pnpm --filter @tactics/client exec vite build --outDir ../../dist --emptyOutDir",
     "test": "pnpm --filter @tactics/core test",
     "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": "24"
   }
 }
