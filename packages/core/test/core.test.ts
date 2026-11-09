@@ -45,7 +45,7 @@ describe('combat', () => {
     expect(sideOf({ x: 5, y: 6 }, t)).toBe('back');
   });
   it('back attack hits harder than front', () => {
-    const m = flat(3, 3);
+    const m = flat(4, 4);
     const hit = (from: { x: number; y: number }) => {
       const a = createUnit('a', 'a', 'A', 'warrior', from, 'N');
       const b = createUnit('b', 'b', 'B', 'warrior', { x: 1, y: 1 }, 'N');
@@ -95,5 +95,30 @@ describe('roster', () => {
     expect(parseRoster([{ id: 'x', name: 'x', classId: 'dragon' }])).toBeNull();
     expect(parseRoster({})).toBeNull();
     expect(parseRoster([])).toBeNull();
+  });
+});
+
+import { blankMap, parseMap, resizeMap } from '../src';
+describe('map editing', () => {
+  it('blank map is valid and survives a JSON round trip', () => {
+    const m = blankMap('m1', 12, 8);
+    expect(validateMap(m)).toEqual([]);
+    expect(parseMap(JSON.parse(JSON.stringify(m)))).toEqual(m);
+  });
+  it('parseMap rejects malformed or invalid data without throwing', () => {
+    expect(parseMap(null)).toBeNull();
+    expect(parseMap({ id: 'x' })).toBeNull();
+    expect(parseMap({ ...blankMap('m'), terrain: [1, 2] })).toBeNull();
+    const dup = blankMap('m');
+    dup.spawns.B[0] = dup.spawns.A[0];
+    expect(parseMap(dup)).toBeNull();
+  });
+  it('resize keeps cells and drops spawns outside', () => {
+    const m = blankMap('m', 10, 10);
+    m.heights[1][1] = 3;
+    const r = resizeMap(m, 6, 6);
+    expect(r.heights[1][1]).toBe(3);
+    expect(r.spawns.B).toEqual([]); // were on row 9
+    expect(r.terrain).toHaveLength(6);
   });
 });

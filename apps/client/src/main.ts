@@ -1,3 +1,6 @@
 import { showMenu } from './menu';
 
-showMenu(async roster => (await import('./battle')).startTestBattle(roster));
+showMenu({
+  testBattle: async (roster, map) => (await import('./battle')).startTestBattle(roster, map),
+  editor: async () => (await import('./editor')).startEditor(),
+});

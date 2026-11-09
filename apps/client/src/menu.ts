@@ -1,4 +1,5 @@
-import { CLASSES, DEFAULT_ROSTER, parseRoster, type RosterUnit } from '@tactics/core';
+import { CLASSES, DEFAULT_ROSTER, parseRoster, type MapData, type RosterUnit } from '@tactics/core';
+import { allMaps } from './maps';
 
 const KEY = 'tactics.roster';
 
@@ -30,7 +31,7 @@ const STAT_LABELS = [
   ['speed', 'Velocità'], ['move', 'Movimento'], ['jump', 'Salto'],
 ] as const;
 
-export function showMenu(onTestBattle: (roster: RosterUnit[]) => void) {
+export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) => void; editor: () => void }) {
   const root = document.getElementById('menu')!;
   let roster = loadRoster();
   let selected = roster[0].id;
@@ -42,8 +43,30 @@ export function showMenu(onTestBattle: (roster: RosterUnit[]) => void) {
         el('button', { className: 'menu-btn', textContent: 'Caserma', onclick: barracks }),
         el('button', {
           className: 'menu-btn primary', textContent: 'Battaglia di prova',
-          onclick: () => { root.hidden = true; onTestBattle(roster); },
+          onclick: pickMap,
         }),
+        el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } }),
+      ),
+    );
+  };
+
+  const fight = (map: MapData) => { root.hidden = true; go.testBattle(roster, map); };
+
+  const pickMap = () => {
+    const maps = allMaps();
+    if (maps.length === 1) return fight(maps[0]);
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: 'Scegli la mappa' }),
+        ),
+        el('div', { className: 'map-list' },
+          ...maps.map(m => el('button', { className: 'roster-item', onclick: () => fight(m) },
+            el('span', { className: 'rn', textContent: m.name }),
+            el('span', { className: 'rc', textContent: `${m.width}×${m.height} · fino a ${m.maxDeploy} unità` }),
+          )),
+        ),
       ),
     );
   };

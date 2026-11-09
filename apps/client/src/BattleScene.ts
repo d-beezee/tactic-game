@@ -22,12 +22,22 @@ const SPRITE_CLASSES = ['warrior', 'archer', 'cleric'];
 const SPRITE_SCALE = 1.25, SPRITE_FEET_Y = 46 / 48;
 const spriteKey = (classId: string, d: Dir) => `${classId}-${d}`;
 
+/** Screen space kept free for HTML UI around the map. */
+export interface Insets { top: number; right: number; bottom: number; left: number }
+const battleInsets = (w: number): Insets => ({ top: 70, right: 0, bottom: w < 640 ? 190 : 110, left: 0 });
+
 export class BattleScene extends Phaser.Scene {
   private overlays = new Map<string, Phaser.GameObjects.Graphics>();
   private sprites = new Map<string, UnitSprite>();
-  private hits: { p: Pos; poly: Phaser.Geom.Polygon; depth: number }[] = [];
+  private hits = new Map<string, { p: Pos; poly: Phaser.Geom.Polygon; depth: number }>();
+  private cellObjects = new Map<string, Phaser.GameObjects.GameObject[]>();
 
-  constructor(private mapData: MapData, private initialUnits: Unit[], private onReady: (scene: BattleScene) => void) {
+  constructor(
+    private mapData: MapData,
+    private initialUnits: Unit[],
+    private onReady: (scene: BattleScene) => void,
+    private insets: (width: number, height: number) => Insets = battleInsets,
+  ) {
     super('battle');
   }
 
@@ -38,16 +48,33 @@ export class BattleScene extends Phaser.Scene {
 
   create() {
     for (const c of SPRITE_CLASSES) for (const d of Object.keys(DIRS) as Dir[]) this.textures.get(spriteKey(c, d)).setFilter(Phaser.Textures.FilterMode.NEAREST);
-    const m = this.mapData;
-    for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) this.drawCell({ x, y });
+    this.setMap(this.mapData);
     for (const u of this.initialUnits) this.addUnit(u);
-    this.fitCamera();
     this.scale.on('resize', () => this.fitCamera());
     this.onReady(this);
   }
 
+  /** Redraw the whole map (new map or new size) and refit the camera. */
+  setMap(m: MapData) {
+    for (const objs of this.cellObjects.values()) for (const o of objs) o.destroy();
+    this.cellObjects.clear();
+    this.hits.clear();
+    this.overlays.clear();
+    this.mapData = m;
+    for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) this.drawCell({ x, y });
+    this.fitCamera();
+  }
+
+  /** Redraw one cell after its height or terrain changed. Camera stays put. */
+  redrawCell(m: MapData, p: Pos) {
+    this.mapData = m;
+    for (const o of this.cellObjects.get(key(p)) ?? []) o.destroy();
+    this.drawCell(p);
+  }
+
   private drawCell(p: Pos) {
     const m = this.mapData;
+    const objs: Phaser.GameObjects.GameObject[] = [];
     const h = heightAt(m, p), t = terrainAt(m, p);
     const c = iso(p.x, p.y, h), down = h * HS + BASE;
     const top = { x: c.x, y: c.y - TH / 2 }, right = { x: c.x + TW / 2, y: c.y }, bottom = { x: c.x, y: c.y + TH / 2 }, left = { x: c.x - TW / 2, y: c.y };
@@ -57,6 +84,7 @@ export class BattleScene extends Phaser.Scene {
       const at = iso(p.x, p.y, l);
       const img = this.add.image(at.x, at.y, tex).setDepth(depthOf(p) + l * 0.05);
       img.setOrigin(0.5, TILE_TOP_CY / img.height).setScale(TW / TILE_SRC_W);
+      objs.push(img);
     }
     const g = this.add.graphics().setDepth(depthOf(p) + 0.9);
     g.lineStyle(1, 0x000000, 0.18).strokePoints([top, right, bottom, left], true);
@@ -68,9 +96,12 @@ export class BattleScene extends Phaser.Scene {
     // hit area covers the whole visible column, so tapping a cliff face picks the cell in front
     const hit = new Phaser.Geom.Polygon([top, right, { x: right.x, y: right.y + down }, { x: bottom.x, y: bottom.y + down }, { x: left.x, y: left.y + down }, left]);
     g.setInteractive(hit, Phaser.Geom.Polygon.Contains);
-    this.hits.push({ p, poly: hit, depth: depthOf(p) });
+    this.hits.set(key(p), { p, poly: hit, depth: depthOf(p) });
     g.on('pointerdown', () => this.events.emit('cell', p));
-    this.overlays.set(key(p), this.add.graphics().setDepth(depthOf(p) + 1));
+    const overlay = this.add.graphics().setDepth(depthOf(p) + 1);
+    this.overlays.set(key(p), overlay);
+    objs.push(g, overlay);
+    this.cellObjects.set(key(p), objs);
   }
 
   private fitCamera() {
@@ -79,19 +110,19 @@ export class BattleScene extends Phaser.Scene {
     const minX = iso(0, m.height - 1, 0).x - TW / 2, maxX = iso(m.width - 1, 0, 0).x + TW / 2;
     const minY = iso(0, 0, maxH).y - TH / 2 - UNIT_TOP, maxY = iso(m.width - 1, m.height - 1, 0).y + TH / 2 + BASE;
     const { width, height } = this.scale;
-    const hudTop = 70, hudBottom = width < 640 ? 190 : 110;
+    const ins = this.insets(width, height);
     const cam = this.cameras.main;
-    cam.setZoom(Math.min(width / (maxX - minX), (height - hudTop - hudBottom) / (maxY - minY)) * 0.95);
-    // centre the map in the area between the HUD bars
-    cam.centerOn((minX + maxX) / 2, (minY + maxY) / 2 + (hudBottom - hudTop) / 2 / cam.zoom);
+    cam.setZoom(Math.min((width - ins.left - ins.right) / (maxX - minX), (height - ins.top - ins.bottom) / (maxY - minY)) * 0.95);
+    // centre the map in the area left free by the HTML UI
+    cam.centerOn((minX + maxX) / 2 + (ins.right - ins.left) / 2 / cam.zoom, (minY + maxY) / 2 + (ins.bottom - ins.top) / 2 / cam.zoom);
   }
 
   /** Cell under a page (client) coordinate; front-most column wins. */
   cellAt(clientX: number, clientY: number): Pos | null {
     const rect = this.game.canvas.getBoundingClientRect();
     const w = this.cameras.main.getWorldPoint(clientX - rect.left, clientY - rect.top);
-    let best: (typeof this.hits)[number] | null = null;
-    for (const h of this.hits) if ((!best || h.depth > best.depth) && h.poly.contains(w.x, w.y)) best = h;
+    let best: { p: Pos; depth: number } | null = null;
+    for (const h of this.hits.values()) if ((!best || h.depth > best.depth) && h.poly.contains(w.x, w.y)) best = h;
     return best?.p ?? null;
   }
 
