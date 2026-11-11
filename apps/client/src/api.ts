@@ -1,6 +1,10 @@
 import type { BattleAction, MapData, Player, Pos, Unit, UnitChange, XpReport } from '@tactics/core';
 
-export interface Account extends Player { email: string }
+export interface Account extends Player {
+  email: string;
+  /** the admin is the only one with the map editor and custom maps */
+  admin: boolean;
+}
 
 export class ApiError extends Error {
   /** status 0 = the server could not be reached */

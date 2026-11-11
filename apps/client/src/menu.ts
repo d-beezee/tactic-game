@@ -3,7 +3,7 @@ import {
   unlockedPassives, xpToReach, type MapData, type Player, type RosterUnit, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account } from './api';
-import { allMaps } from './maps';
+import { allMaps, BUILTIN_MAPS } from './maps';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] => {
   const e = Object.assign(document.createElement(tag), props);
@@ -91,7 +91,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
           className: 'menu-btn primary', textContent: 'Battaglia di prova',
           onclick: pickMap,
         }),
-        el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } }),
+        ...(player.admin ? [el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } })] : []),
         el('button', { className: 'menu-btn', textContent: 'Esci', onclick: () => void api.logout().then(() => auth(), e => auth((e as Error).message)) }),
       ),
     );
@@ -123,7 +123,8 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
   };
 
   const pickMap = () => {
-    const maps = allMaps();
+    // the server refuses custom maps from anyone but the admin
+    const maps = player.admin ? allMaps() : BUILTIN_MAPS;
     if (maps.length === 1) return fight(maps[0]);
     root.replaceChildren(
       el('div', { className: 'barracks' },

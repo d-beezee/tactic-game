@@ -8,7 +8,8 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import type pg from 'pg';
-import { tx } from './db';
+import builtinMap from '../../client/src/maps/demo.json';
+import { ensureAdmin, tx } from './db';
 
 const COOKIE = 'sid';
 const SESSION_DAYS = 30;
@@ -29,7 +30,7 @@ async function checkPassword(pw: string, stored: string) {
 
 /** Request the client got wrong; the message is shown to the player. */
 class HttpError extends Error {
-  constructor(public status: 400 | 401 | 404 | 409 | 429, message: string) { super(message); }
+  constructor(public status: 400 | 401 | 403 | 404 | 409 | 429, message: string) { super(message); }
 }
 
 function credentials(body: any) {
@@ -94,8 +95,10 @@ export function createApp(pool: pg.Pool, staticDir: string) {
       'INSERT INTO users (email, password_hash, gold, roster, inventory) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING RETURNING id',
       [email, await hashPassword(password), p.gold, JSON.stringify(p.roster), JSON.stringify(p.inventory)]);
     if (!rows[0]) throw new HttpError(409, 'Email già registrata');
+    await ensureAdmin(pool);
+    const { rows: [{ admin }] } = await pool.query('SELECT is_admin AS admin FROM users WHERE id = $1', [rows[0].id]);
     await openSession(c, rows[0].id);
-    return c.json({ email, ...p });
+    return c.json({ email, admin, ...p });
   });
 
   app.post('/api/auth/login', async c => {
@@ -103,7 +106,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const key = `${c.req.header('x-forwarded-for')?.split(',')[0].trim() ?? ''}|${email}`;
     const f = fails.get(key);
     if (f && f.until > Date.now() && f.n >= MAX_FAILS) throw new HttpError(429, 'Troppi tentativi. Riprova tra qualche minuto.');
-    const { rows } = await pool.query('SELECT id, password_hash, gold, roster, inventory FROM users WHERE email = $1', [email]);
+    const { rows } = await pool.query('SELECT id, password_hash, is_admin AS admin, gold, roster, inventory FROM users WHERE email = $1', [email]);
     if (!rows[0] || !(await checkPassword(password, rows[0].password_hash))) {
       if (fails.size > 10_000) fails.clear(); // bound memory under a flood of made-up emails
       fails.set(key, { n: f && f.until > Date.now() ? f.n + 1 : 1, until: Date.now() + FAIL_WINDOW_MS });
@@ -111,8 +114,8 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     }
     fails.delete(key);
     await openSession(c, rows[0].id);
-    const { gold, roster, inventory } = rows[0];
-    return c.json({ email, gold, roster, inventory });
+    const { admin, gold, roster, inventory } = rows[0];
+    return c.json({ email, admin, gold, roster, inventory });
   });
 
   app.post('/api/auth/logout', async c => {
@@ -134,7 +137,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   });
 
   app.get('/api/me', async c => {
-    const { rows } = await pool.query('SELECT email, gold, roster, inventory FROM users WHERE id = $1', [c.get('userId')]);
+    const { rows } = await pool.query('SELECT email, is_admin AS admin, gold, roster, inventory FROM users WHERE id = $1', [c.get('userId')]);
     return c.json(rows[0]);
   });
 
@@ -155,7 +158,9 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const map = parseMap(b.map);
     if (!map) throw new HttpError(400, 'Mappa non valida');
     const userId = c.get('userId');
-    const { rows: [user] } = await pool.query('SELECT roster FROM users WHERE id = $1', [userId]);
+    const { rows: [user] } = await pool.query('SELECT roster, is_admin FROM users WHERE id = $1', [userId]);
+    // only the admin has the map editor, so everyone else fights on the built-in map; parseMap fixes the key order on both sides
+    if (!user.is_admin && JSON.stringify(map) !== JSON.stringify(parseMap(builtinMap))) throw new HttpError(403, 'Solo l\'admin può usare mappe personalizzate');
     const units = deployTestBattle(user.roster, map, b.deploy);
     const seed = randomBytes(4).readUInt32BE();
     return c.json(await tx(pool, async db => {

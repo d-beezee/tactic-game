@@ -27,7 +27,16 @@ const MIGRATIONS = [
      created_at timestamptz NOT NULL DEFAULT now()
    );
    CREATE INDEX battles_user_id ON battles (user_id);`,
+  `ALTER TABLE users ADD COLUMN is_admin boolean NOT NULL DEFAULT false;`,
 ];
+
+/**
+ * If nobody is admin, the oldest account becomes one. Runs at startup and after each sign-up,
+ * so the first account ever is the admin and a database that lost its admin gets one back.
+ */
+export const ensureAdmin = (db: pg.Pool | pg.PoolClient) => db.query(
+  `UPDATE users SET is_admin = true
+   WHERE id = (SELECT id FROM users ORDER BY created_at, id LIMIT 1) AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin)`);
 
 /** Runs fn in a transaction on one connection. */
 export async function tx<T>(pool: pg.Pool, fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -55,5 +64,6 @@ export const migrate = (pool: pg.Pool) => tx(pool, async db => {
     await db.query('INSERT INTO schema_migrations VALUES ($1)', [v + 1]);
     console.log(`migration ${v + 1} applied`);
   }
+  await ensureAdmin(db);
   await db.query('DELETE FROM sessions WHERE expires_at < now()');
 });

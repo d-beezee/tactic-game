@@ -142,6 +142,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 ## Account, oro ed equipaggiamento
 
 - **Account:** email e password. Chi si registra da un browser in cui aveva già giocato porta con sé il roster salvato lì.
+- **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Solo l'admin vede l'editor mappe e può combattere su mappe personalizzate. Gli altri usano la mappa di base, e il server rifiuta le loro richieste con mappe diverse.
 - **Oro:** si parte con 300. Una vittoria nella battaglia di prova ne dà 20.
 - **Negozio:** vende armi e armature. Ogni acquisto aggiunge una copia all'inventario.
 - **Equipaggiamento:** ogni unità ha due slot, arma e armatura. Una copia di un oggetto può stare su una sola unità alla volta. I bonus sono fissi e si sommano alle statistiche dopo la crescita di livello e prima della passiva.
@@ -176,7 +177,7 @@ Il catalogo è in `packages/core/src/items.ts`.
 
 ## Editor mappe
 
-Dal menu, "Editor mappe".
+Dal menu, "Editor mappe". La voce compare solo all'admin.
 - **Strumenti:** alza e abbassa il terreno, dipingi il tipo di terreno (erba, terra, pietra, acqua, albero), piazza le caselle di partenza blu e nemiche. Alza, abbassa e terreno si applicano anche trascinando sulla mappa.
 - **Proprietà:** nome, dimensioni (da 4 a 24 caselle per lato), unità schierabili per squadra.
 - **Validazione:** la mappa viene controllata a ogni modifica e si può salvare solo se è valida.
@@ -191,12 +192,11 @@ Dal menu, "Editor mappe".
 ## Limiti noti
 
 - Le mappe create con l'editor sono salvate in `localStorage`: vengono perse in una finestra privata o se si cancellano i dati del sito. Roster, oro e inventario sono invece sul server.
-- La battaglia di prova accetta qualsiasi mappa valida, anche una creata apposta per vincere subito. XP e oro sono calcolati dal server, ma su una mappa così si accumulano in fretta. Le missioni dovranno usare solo mappe salvate sul server.
+- Le mappe dell'admin restano nel suo browser: gli altri giocatori non le vedono. Per condividerle servono mappe salvate sul server.
 - Si può avere una sola battaglia aperta per account: iniziarne una seconda, anche da un'altra scheda, annulla la prima.
 - Non c'è verifica dell'email né recupero della password: servirebbe un servizio di posta.
 - Gli oggetti non si possono rivendere e non hanno restrizioni di classe. I nemici non hanno equipaggiamento.
 - I tentativi di accesso falliti sono contati in memoria: il limite vale per una sola istanza del server e si azzera a ogni riavvio.
-- L'editor non ha un accesso riservato: è aperto a chiunque apra il gioco.
 - Gli attacchi a distanza non controllano la linea di tiro.
 - Non si può zoomare con le dita.
 - Le sprite hanno solo la posa ferma.
