@@ -4,20 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tactics</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffc94a' d='M3 0h2v1h1v2h1v2H6v2H5v1H3V7H2V5H1V3h1V1h1z'/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23e0ac4a' d='M3 0h2v1h1v2h1v2H6v2H5v1H3V7H2V5H1V3h1V1h1z'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Jersey+15&family=Silkscreen:wght@700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,500;0,700;0,800;1,800&family=Grenze:wght@700;800&family=Jersey+15&display=swap" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="game"></div>
+    <div id="backdrop" aria-hidden="true"></div>
     <div id="menu" hidden></div>
     <div id="editor" hidden></div>
     <div id="rotate" hidden></div>
     <div id="hud" hidden>
       <div id="timeline"></div>
       <div id="banner"></div>
+      <div id="ribbon" aria-live="polite"></div>
+      <div id="forecast" hidden></div>
       <div id="panel">
         <div id="card"></div>
         <div id="buttons"></div>

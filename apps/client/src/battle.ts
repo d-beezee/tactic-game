@@ -16,6 +16,8 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
   const scene = new BattleScene(map, enemies, s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
     mountRotate(s);
+    s.enableFx();
+    hud.setPortraits(c => s.portrait(c));
 
     const begin = async (team: Unit[]) => {
       hud.buttons([]);
@@ -26,7 +28,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
       } catch (e) {
         hud.banner(`Battaglia non avviata: ${(e as Error).message}`);
         return hud.buttons([
-          { label: '← Menu', onClick: () => location.reload() },
+          { label: 'Menu', icon: 'back', onClick: () => location.reload() },
           { label: 'Riprova', primary: true, onClick: () => void begin(team) },
         ]);
       }
@@ -36,7 +38,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
         for (let attempt = 1; ; attempt++) {
           try {
             const { report, gold } = await api.battleFinish(battle.id, actions);
-            const lines = report.map(r => `${r.name} · ${CLASSES[r.classId].name} +${r.gained} XP${r.to > r.from ? ` · livello ${r.to}!` : ''}`);
+            const lines = report.map(r => `${r.name}, ${CLASSES[r.classId].name}: +${r.gained} XP${r.to > r.from ? `, livello ${r.to}!` : ''}`);
             return gold ? [...lines, `+${gold} oro`] : lines;
           } catch (e) {
             // 4xx: the server refused these actions, sending them again cannot help
@@ -52,7 +54,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
   new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
-    backgroundColor: '#1b1712',
+    transparent: true, // the stage background and light shafts are CSS behind the canvas
     scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
     scene: [scene],
   });

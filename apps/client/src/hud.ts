@@ -1,61 +1,137 @@
-import { CLASSES, unitById, type BattleState, type Unit } from '@tactics/core';
+import { CLASSES, unitById, type BattleState, type Side, type Unit } from '@tactics/core';
+import { play, type Sound } from './sfx';
+import { reducedMotion } from './theme';
 
-export interface Btn { label: string; hint?: string; onClick: () => void; disabled?: boolean; primary?: boolean; onHover?: (on: boolean) => void }
+const ICONS = {
+  move: '<path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/>',
+  attack: '<path d="M4 20 15 9M14 4h6v6M9 15l-3-3M12 18l-3-3"/>',
+  heal: '<path d="M12 5v14M5 12h14"/>',
+  face: '<path d="M4 12h13M12 6l6 6-6 6"/><path d="M20 4v16"/>',
+  end: '<path d="M5 5v14l8-7zM15 5v14"/>',
+  back: '<path d="M10 6 4 12l6 6M4 12h16"/>',
+  confirm: '<path d="m4 12 5 5L20 6"/>',
+} as const;
+export type Icon = keyof typeof ICONS;
+
+export interface Btn { label: string; hint?: string; icon?: Icon; onClick: () => void; disabled?: boolean; primary?: boolean; onHover?: (on: boolean) => void }
 
 const $ = (id: string) => document.getElementById(id)!;
+const el = (tag: string, className: string, text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
+
+/** Portrait data URL for a class; set by the battle once the sprites are loaded. */
+let portraitOf: (classId: string) => string = () => '';
+
+function medal(u: { classId: string; team: string; name: string }, extra = '') {
+  const m = el('div', `medal ${u.team}${extra}`);
+  const url = portraitOf(u.classId);
+  if (url) m.style.backgroundImage = `url(${url})`;
+  m.setAttribute('aria-hidden', 'true');
+  return m;
+}
 
 function button(b: Btn): HTMLElement {
-  const el = document.createElement('button');
-  el.textContent = b.label;
-  if (b.hint) el.append(Object.assign(document.createElement('small'), { textContent: b.hint }));
-  el.disabled = !!b.disabled;
-  if (b.primary) el.className = 'primary';
-  el.onclick = b.onClick;
-  if (!b.onHover) return el;
+  const btn = document.createElement('button');
+  if (b.icon) btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[b.icon]}</svg>`;
+  btn.append(el('span', 'lbl', b.label));
+  if (b.hint) btn.append(el('small', '', b.hint));
+  btn.disabled = !!b.disabled;
+  if (b.primary) btn.className = 'primary';
+  btn.onclick = () => { play('select'); b.onClick(); };
+  if (!b.onHover) return btn;
   // disabled buttons get no mouse events, so the wrapper listens instead
-  const wrap = Object.assign(document.createElement('span'), { className: 'btn-wrap' });
-  wrap.append(el);
+  const wrap = el('span', 'btn-wrap');
+  wrap.append(btn);
   wrap.onpointerenter = () => b.onHover!(true);
   wrap.onpointerleave = () => b.onHover!(false);
   return wrap;
 }
 
+const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco ×1,25', back: 'Alle spalle ×1,5' };
+
 export const hud = {
+  setPortraits(fn: (classId: string) => string) { portraitOf = fn; },
+
   timeline(s: BattleState) {
-    const chips: HTMLElement[] = [];
-    for (let i = 0; chips.length < 10 && i < s.order.length * 3; i++) {
+    const items: HTMLElement[] = [];
+    for (let i = 0, shown = 0; shown < 9 && i < s.order.length * 3; i++) {
       const u = unitById(s, s.order[(s.turn + i) % s.order.length]);
       if (u.hp <= 0) continue;
       // the order wraps: mark where the next round starts
-      if (i > 0 && (s.turn + i) % s.order.length === 0) {
-        chips.push(Object.assign(document.createElement('div'), { className: 'chip round', textContent: `Round ${s.round + Math.floor((s.turn + i) / s.order.length)}` }));
-      }
-      chips.push(Object.assign(document.createElement('div'), { className: `chip ${u.team}${i === 0 ? ' now' : ''}`, textContent: u.name }));
+      if (i > 0 && (s.turn + i) % s.order.length === 0) items.push(el('div', 'round-mark', `Round ${s.round + Math.floor((s.turn + i) / s.order.length)}`));
+      const m = medal(u, i === 0 ? ' now' : '');
+      m.removeAttribute('aria-hidden');
+      m.title = `${u.name}, ${CLASSES[u.classId].name}`;
+      m.append(el('small', '', u.name));
+      items.push(m);
+      shown++;
     }
-    $('timeline').replaceChildren(...chips);
+    $('timeline').replaceChildren(...items);
   },
 
+  /** Unit card. Updating the same unit keeps the HP bar, so the lost part trails behind before it drops. */
   card(u: Unit) {
     const c = $('card');
+    const pct = `${(100 * Math.max(0, u.hp)) / u.stats.maxHp}%`;
+    const low = u.hp / u.stats.maxHp <= 0.35;
+    if (c.dataset.id === u.id) {
+      c.querySelector<HTMLElement>('.hp-now')!.style.width = pct;
+      c.querySelector<HTMLElement>('.hp-now')!.classList.toggle('low', low);
+      c.querySelector<HTMLElement>('.hp-ghost')!.style.width = pct;
+      c.querySelector('.hp-num')!.textContent = `${Math.max(0, u.hp)}/${u.stats.maxHp}`;
+      return;
+    }
+    c.dataset.id = u.id;
     c.className = u.team;
-    c.innerHTML = '';
     const { stats } = u;
-    const grid = Object.assign(document.createElement('div'), { className: 'stats' });
-    for (const [label, value] of [['PV', `${u.hp}/${stats.maxHp}`], ['ATT', stats.atk], ['DIF', stats.def], ['MAG', stats.mag], ['VEL', stats.speed], ['MOV', stats.move], ['SALTO', stats.jump]] as const) {
-      const cell = document.createElement('span');
-      cell.append(Object.assign(document.createElement('i'), { textContent: label }), String(value));
+    const grid = el('div', 'stats');
+    for (const [label, value] of [['ATT', stats.atk], ['DIF', stats.def], ['MAG', stats.mag], ['VEL', stats.speed], ['MOV', stats.move], ['SALTO', stats.jump]] as const) {
+      const cell = el('span', '');
+      cell.append(el('i', '', label), String(value));
       grid.append(cell);
     }
-    c.append(
-      Object.assign(document.createElement('div'), { className: 'name', textContent: u.name }),
-      Object.assign(document.createElement('div'), { className: 'cls', textContent: `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? ` · ${CLASSES[u.passive].passive.name}` : ''} · ${u.team === 'A' ? 'tua squadra' : 'nemico'}` }),
-      Object.assign(document.createElement('div'), { className: 'bar', innerHTML: `<div style="width:${(100 * u.hp) / stats.maxHp}%"></div>` }),
-      grid,
-    );
+    const bar = el('div', 'bar');
+    const now = el('div', `hp-now${low ? ' low' : ''}`), ghost = el('div', 'hp-ghost');
+    now.style.width = ghost.style.width = pct;
+    bar.append(ghost, now);
+    const head = el('div', 'head'), who = el('div', '');
+    who.append(el('div', 'name', u.name), el('div', 'cls', `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? `, ${CLASSES[u.passive].passive.name}` : ''}${u.team === 'A' ? '' : ', nemico'}`));
+    head.append(medal(u), who);
+    const hpRow = el('div', 'hp-row');
+    hpRow.append(el('span', 'hp-num', `${Math.max(0, u.hp)}/${stats.maxHp}`), el('span', 'hp-lbl', 'PV'));
+    c.replaceChildren(head, bar, hpRow, grid);
   },
 
   banner(text: string) {
     $('banner').textContent = text;
+  },
+
+  /** Big title across the screen at the start of a turn. */
+  ribbon(text: string, sound: Sound = 'turn') {
+    const r = $('ribbon');
+    r.textContent = text;
+    r.classList.remove('show');
+    void r.offsetWidth; // restart the animation
+    r.classList.add('show');
+    play(sound);
+  },
+
+  /** Expected result of an action, shown before the player confirms it. */
+  forecast(f: { title: string; amount: number; heal: boolean; side?: Side; dh?: number; hp: number; maxHp: number } | null) {
+    const box = $('forecast');
+    if (!f) return void (box.hidden = true);
+    box.className = f.heal ? 'heal' : '';
+    const after = f.heal ? Math.min(f.maxHp, f.hp + f.amount) : Math.max(0, f.hp - f.amount);
+    const rows: [string, string][] = [];
+    if (!f.heal && f.side) rows.push(['Lato', SIDE_TEXT[f.side]]);
+    if (!f.heal && f.dh) rows.push([f.dh > 0 ? `Più in alto di ${f.dh}` : `Più in basso di ${-f.dh}`, `${f.dh > 0 ? '+' : ''}${Math.max(-4, Math.min(4, f.dh)) * 5}%`]);
+    const dl = document.createElement('dl');
+    for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v));
+    const big = el('div', 'big', `${f.heal ? '+' : ''}${f.amount}`);
+    big.append(el('small', '', f.heal ? 'cura, circa' : 'danno, circa'));
+    const res = el('div', 'after');
+    res.append(`PV ${f.hp} `, el('span', '', 'diventa'), ' ', el('b', after === 0 ? 'ko' : '', after === 0 ? 'KO' : String(after)));
+    box.replaceChildren(el('h4', '', f.title), big, dl, res);
+    box.hidden = false;
   },
 
   buttons(list: (Btn | HTMLElement)[]) {
@@ -64,20 +140,30 @@ export const hud = {
 
   /** 2×2 grid of iso arrows, laid out like they appear on screen. */
   dirs(onPick: (d: 'N' | 'E' | 'S' | 'W') => void, onPreview?: (d: 'N' | 'E' | 'S' | 'W' | null) => void): HTMLElement {
-    const g = Object.assign(document.createElement('div'), { className: 'dirs' });
-    for (const [d, label] of [['W', '↖'], ['N', '↗'], ['S', '↙'], ['E', '↘']] as const) {
-      g.append(button({ label, onClick: () => onPick(d), onHover: onPreview && (on => onPreview(on ? d : null)) }));
+    const g = el('div', 'dirs');
+    for (const [d, label, name] of [['W', '↖', 'alto a sinistra'], ['N', '↗', 'alto a destra'], ['S', '↙', 'basso a sinistra'], ['E', '↘', 'basso a destra']] as const) {
+      const b = button({ label, onClick: () => onPick(d), onHover: onPreview && (on => onPreview(on ? d : null)) });
+      (b.querySelector('button') ?? b).setAttribute('aria-label', `Guarda in ${name}`);
+      g.append(b);
     }
     return g;
   },
 
-  result(text: string, lines: string[], onRestart: () => void) {
+  /** End screen: the title lands, then each report line appears in turn; level-ups get their own sound. */
+  result(win: boolean, lines: string[], onRestart: () => void) {
     const r = $('result');
-    r.innerHTML = '';
-    const list = Object.assign(document.createElement('ul'), { className: 'xp-report' });
-    list.append(...lines.map(l => Object.assign(document.createElement('li'), { textContent: l })));
-    r.append(Object.assign(document.createElement('h1'), { textContent: text }), list, button({ label: 'Torna al menu', onClick: onRestart, primary: true }));
+    r.className = win ? 'win' : 'lose';
+    const list = el('ul', 'xp-report');
+    const step = reducedMotion() ? 0 : 280;
+    lines.forEach((l, i) => {
+      const li = el('li', /livello/i.test(l) ? 'up' : /oro/.test(l) ? 'gold' : '', l);
+      li.style.animationDelay = `${600 + i * step}ms`;
+      list.append(li);
+      if (/livello/i.test(l)) setTimeout(() => play('level'), 600 + i * step);
+    });
+    r.replaceChildren(el('h1', '', win ? 'Vittoria' : 'Sconfitta'), list, button({ label: 'Torna al menu', icon: 'back', onClick: onRestart, primary: true }));
     r.hidden = false;
+    play(win ? 'win' : 'lose');
   },
 };
 
@@ -88,7 +174,10 @@ export function mountRotate(scene: { rotate(steps: 1 | -1): void }) {
     button({ label: '⟲', onClick: () => scene.rotate(-1) }),
     button({ label: '⟳', onClick: () => scene.rotate(1) }),
   );
-  box.querySelectorAll('button').forEach((b, i) => (b.title = i ? 'Ruota a destra (E)' : 'Ruota a sinistra (Q)'));
+  box.querySelectorAll('button').forEach((b, i) => {
+    b.title = i ? 'Ruota a destra (E)' : 'Ruota a sinistra (Q)';
+    b.setAttribute('aria-label', b.title);
+  });
   box.hidden = false;
   window.addEventListener('keydown', e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.repeat) return;

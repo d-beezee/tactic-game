@@ -1,8 +1,9 @@
 import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Unit } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
+import { COLOR } from './theme';
 
-const SPAWN = 0x4fc3ff, HOVER = 0xf2c14e;
+const SPAWN = COLOR.reach, HOVER = COLOR.brass;
 
 type Source = { kind: 'tray'; r: RosterUnit } | { kind: 'cell'; u: Unit };
 
@@ -40,12 +41,16 @@ export class Deploy {
     if (this.drag?.hover) this.scene.highlight([this.drag.hover], HOVER);
     const full = this.placed.length >= this.max;
     hud.banner(full
-      ? `Squadra al completo · ${this.max}/${this.max} · trascina un'unità su una casella occupata per sostituirla`
-      : `Schieramento · ${this.placed.length}/${this.max} · tocca o trascina un'unità sulle caselle blu`);
+      ? `Squadra al completo (${this.max}/${this.max}): trascina un'unità su una casella occupata per sostituirla`
+      : `Schieramento ${this.placed.length}/${this.max}: tocca o trascina un'unità sulle caselle azzurre`);
 
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
       const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
-      item.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
+      const face = Object.assign(document.createElement('div'), { className: 'medal A' });
+      face.style.backgroundImage = `url(${this.scene.portrait(r.classId)})`;
+      const txt = document.createElement('span');
+      txt.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
+      item.append(face, txt);
       item.onpointerdown = e => { hud.card(unitFromRoster(r, 'A', { x: 0, y: 0 }, 'S')); this.startDrag({ kind: 'tray', r }, e); };
       return item;
     });
@@ -54,7 +59,7 @@ export class Deploy {
 
     hud.buttons([
       trayBox,
-      { label: '← Menu', onClick: () => location.reload() },
+      { label: 'Menu', icon: 'back', onClick: () => location.reload() },
       {
         label: this.placed.length ? 'Inizia battaglia' : 'Schiera almeno 1 unità',
         primary: true,
@@ -70,7 +75,10 @@ export class Deploy {
   private startDrag(src: Source, e: PointerEvent) {
     e.preventDefault();
     const name = src.kind === 'tray' ? src.r.name : src.u.name;
-    const ghost = Object.assign(document.createElement('div'), { className: 'drag-ghost', textContent: name });
+    const classId = src.kind === 'tray' ? src.r.classId : src.u.classId;
+    // the unit itself follows the finger, half transparent
+    const ghost = Object.assign(document.createElement('div'), { className: 'drag-ghost' });
+    ghost.append(Object.assign(document.createElement('img'), { src: `units/${classId}/S.png`, alt: '' }), Object.assign(document.createElement('span'), { textContent: name }));
     ghost.hidden = true;
     document.body.append(ghost);
     this.drag = { src, ghost, startX: e.clientX, startY: e.clientY, moved: false, hover: null };
@@ -119,6 +127,7 @@ export class Deploy {
     const u = unitFromRoster(src.r, 'A', target, 'S');
     this.placed.push(u);
     this.scene.addUnit(u);
+    this.scene.dropIn(u.id);
     hud.card(u);
   }
 

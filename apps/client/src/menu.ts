@@ -1,9 +1,11 @@
 import {
-  CLASSES, ITEMS, MAX_CLASS_LEVEL, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
-  unlockedPassives, xpToReach, type MapData, type Player, type RosterUnit, type UnitChange,
+  CLASSES, DEFAULT_ROSTER, ITEMS, MAX_CLASS_LEVEL, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
+  unlockedPassives, xpToReach, type ItemDef, type MapData, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account, type User } from './api';
 import { allMaps, BUILTIN_MAPS } from './maps';
+import { play } from './sfx';
+import { reducedMotion, saveSettings, settings } from './theme';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] => {
   const e = Object.assign(document.createElement(tag), props);
@@ -15,6 +17,46 @@ const STAT_LABELS = [
   ['maxHp', 'PV'], ['atk', 'Attacco'], ['def', 'Difesa'], ['mag', 'Magia'],
   ['speed', 'Velocità'], ['move', 'Movimento'], ['jump', 'Salto'],
 ] as const;
+const STAT_SHORT: Record<keyof Stats, string> = { maxHp: 'PV', atk: 'ATT', def: 'DIF', mag: 'MAG', speed: 'VEL', move: 'MOV', jump: 'SALTO' };
+// full length of a stat bar in the barracks
+const BAR_MAX: Partial<Record<keyof Stats, number>> = { maxHp: 120, atk: 30, def: 30, mag: 30, speed: 20 };
+const FACINGS = ['S', 'E', 'N', 'W'];
+
+/** The unit's sprite turning on a lit pedestal; stops by itself once the screen is gone. */
+function pedestal(classId: string) {
+  const img = el('img', { alt: '', src: `units/${classId}/S.png`, width: 168, height: 168 });
+  if (!reducedMotion()) {
+    let f = 0;
+    const spin = setInterval(() => {
+      if (!img.isConnected) return clearInterval(spin);
+      img.src = `units/${classId}/${FACINGS[f = (f + 1) % 4]}.png`;
+    }, 1100);
+  }
+  return el('div', { className: 'pedestal' }, img);
+}
+
+/** Live map behind the menu, loaded on demand so Phaser stays out of the first download. */
+let stopBackdrop: (() => void) | null = null;
+let backdropGen = 0; // newest request wins when loads overlap
+async function backdrop(roster: RosterUnit[]) {
+  const gen = ++backdropGen;
+  stopBackdrop?.();
+  stopBackdrop = null;
+  try {
+    const stop = (await import('./backdrop')).startBackdrop(BUILTIN_MAPS[0], roster);
+    if (gen !== backdropGen) stop(); // replaced, or the player left the menu while it loaded
+    else stopBackdrop = stop;
+  } catch (e) {
+    console.error(e); // no WebGL or canvas: the menu works without the scene
+  }
+}
+const leaveMenu = () => {
+  backdropGen++;
+  stopBackdrop?.();
+  stopBackdrop = null;
+  document.getElementById('menu')!.hidden = true;
+  document.getElementById('backdrop')!.hidden = true; // it sits above the game canvas
+};
 
 export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) => void; editor: () => void }) {
   const root = document.getElementById('menu')!;
@@ -32,6 +74,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
     player = account;
     selected = player.roster[0].id;
     error = '';
+    void backdrop(player.roster);
     main();
   };
 
@@ -48,6 +91,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
   };
 
   const auth = (message = '', typed = '') => {
+    if (!stopBackdrop) void backdrop(DEFAULT_ROSTER);
     const email = el('input', { type: 'email', name: 'email', autocomplete: 'email', required: true, placeholder: 'Email', value: typed });
     const password = el('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true, minLength: 8, placeholder: 'Password (almeno 8 caratteri)' });
     const show = el('button', {
@@ -101,7 +145,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
     root.replaceChildren(
       el('div', { className: 'menu-main' },
         el('h1', { className: 'title', textContent: 'Tactics' }),
-        el('p', { className: 'account', textContent: `${player.email} · ${player.gold} oro` }),
+        el('p', { className: 'account' }, `${player.email}, `, el('b', { textContent: `${player.gold} oro` })),
         el('button', { className: 'menu-btn', textContent: 'Caserma', onclick: barracks }),
         el('button', { className: 'menu-btn', textContent: 'Negozio', onclick: shop }),
         el('button', {
@@ -109,15 +153,29 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
           onclick: pickMap,
         }),
         ...(player.admin ? [
-          el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } }),
+          el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { leaveMenu(); go.editor(); } }),
           el('button', { className: 'menu-btn', textContent: 'Utenti', onclick: () => void users(api.users()) }),
         ] : []),
         el('button', { className: 'menu-btn', textContent: 'Esci', onclick: () => void api.logout().then(() => auth(), e => auth((e as Error).message)) }),
+        settingsRow(),
       ),
     );
   };
 
-  const fight = (map: MapData) => { root.hidden = true; go.testBattle(player.roster, map); };
+  /** Graphics and sound toggles. Graphics apply from the next scene. */
+  const settingsRow = () => {
+    const s = settings();
+    const toggle = (label: string, on: boolean, flip: () => void) => el('button', {
+      className: 'toggle', type: 'button', onclick: () => { flip(); play('select'); main(); },
+      ariaPressed: String(on),
+    }, `${label}: `, el('b', { textContent: on ? (label === 'Grafica' ? 'piena' : 'acceso') : (label === 'Grafica' ? 'leggera' : 'spento') }));
+    return el('div', { className: 'settings' },
+      toggle('Grafica', s.fx, () => { saveSettings({ ...s, fx: !s.fx }); void backdrop(player.roster); }),
+      toggle('Audio', s.sound, () => saveSettings({ ...s, sound: !s.sound })),
+    );
+  };
+
+  const fight = (map: MapData) => { leaveMenu(); go.testBattle(player.roster, map); };
 
   /** Admin only: list of accounts, with a button to give or take the admin role. */
   const users = async (request: Promise<User[]>, shown: User[] = []) => {
@@ -174,7 +232,8 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
             };
             return el('button', { className: `class-card${confirm ? ' confirm' : ''}`, disabled: missing > 0, onclick: buy },
               el('span', { className: 'cn', textContent: i.name }),
-              el('span', { className: 'cl', textContent: `${SLOT_LABELS[i.slot]} · ${itemBonus(i)}` }),
+              el('span', { className: 'cl', textContent: `${SLOT_LABELS[i.slot]}, ${itemBonus(i)}` }),
+              compare(i),
               el('span', { className: 'cl', textContent: `Possedute: ${player.inventory[i.id] ?? 0}` }),
               el('span', { className: 'price', textContent: missing > 0 ? `${i.price} oro · mancano ${missing}` : confirm ? `Tocca di nuovo per comprare · ${i.price} oro` : `Compra · ${i.price} oro` }),
             );
@@ -182,6 +241,17 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
         ),
       ),
     );
+  };
+
+  /** What the item would change on the unit selected in the barracks, against what it wears now. */
+  const compare = (i: ItemDef) => {
+    const unit = player.roster.find(u => u.id === selected) ?? player.roster[0];
+    if (unit.equip?.[i.slot] === i.id) return el('span', { className: 'delta', textContent: `Già addosso a ${unit.name}` });
+    const now = unitFromRoster(unit, 'A', { x: 0, y: 0 }, 'S').stats;
+    const next = unitFromRoster({ ...unit, equip: { ...unit.equip, [i.slot]: i.id } }, 'A', { x: 0, y: 0 }, 'S').stats;
+    const diffs = (Object.keys(STAT_SHORT) as (keyof Stats)[]).filter(k => next[k] !== now[k]);
+    return el('span', { className: 'delta' }, `${unit.name}: `,
+      ...diffs.flatMap((k, n) => [n ? ', ' : '', `${STAT_SHORT[k]} ${now[k]} `, el(next[k] > now[k] ? 'b' : 'em', { textContent: String(next[k]) })]));
   };
 
   const pickMap = () => {
@@ -270,8 +340,18 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
     });
     const noItems = Object.keys(player.inventory).length ? [] : [el('p', { className: 'hint', textContent: 'Compra armi e armature al negozio.' })];
 
-    const stats = el('table', { className: 'stats' },
-      ...STAT_LABELS.map(([k, label]) => el('tr', {}, el('th', { textContent: label }), el('td', { textContent: String(eff.stats[k]) }))),
+    // bars: the class's own value in parchment, what the equipment adds in brass
+    const bare = unitFromRoster({ ...unit, equip: {} }, 'A', { x: 0, y: 0 }, 'S');
+    const stats = el('div', { className: 'statbars' },
+      ...STAT_LABELS.flatMap(([k, label]) => {
+        const max = BAR_MAX[k], v = eff.stats[k], base = Math.min(v, bare.stats[k]);
+        const bar = max
+          ? el('span', { className: 'b' },
+              Object.assign(el('i'), { style: `width:${(100 * Math.min(base, max)) / max}%` } as object),
+              Object.assign(el('i'), { style: `left:${(100 * Math.min(base, max)) / max}%;width:${(100 * Math.max(0, Math.min(v, max) - base)) / max}%` } as object))
+          : el('span');
+        return [el('span', { className: 't', textContent: label }), bar, el('span', { className: 'v', textContent: String(v) })];
+      }),
     );
 
     const actions = el('ul', { className: 'abilities' },
@@ -290,9 +370,15 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
         errorLine(),
         list,
         el('section', { className: 'detail' },
-          el('h3', { textContent: unit.name }),
+          el('div', { className: 'hero-unit' },
+            pedestal(unit.classId),
+            el('div', {},
+              el('h3', { textContent: unit.name }),
+              el('p', { className: 'sub', textContent: `${cls.name} Lv ${eff.level}` }),
+              stats,
+            ),
+          ),
           el('div', { className: 'label', textContent: 'Classi' }), classes,
-          el('div', { className: 'label', textContent: `Statistiche · ${cls.name} Lv ${eff.level}` }), stats,
           el('div', { className: 'label', textContent: 'Abilità' }), actions,
           el('div', { className: 'label', textContent: 'Passiva (1 slot)' }), passives,
           ...equipment, ...noItems,
