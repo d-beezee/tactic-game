@@ -185,6 +185,9 @@ export class BattleScene extends Phaser.Scene {
     // pointers pressed on the canvas; Phaser's own isDown can stay stuck after touches on the HTML UI
     const down = new Map<number, { x: number; y: number }>();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      // Phaser also reports touches that start on the HTML UI; their end can be lost when the button re-renders,
+      // leaving a phantom finger that turns the next tap into a pinch
+      if (p.downElement !== this.game.canvas) return;
       if (!down.size) this.dragged = false;
       down.set(p.id, { x: p.x, y: p.y });
       this.pinch = 0;
