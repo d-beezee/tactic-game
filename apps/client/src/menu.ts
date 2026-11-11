@@ -2,7 +2,7 @@ import {
   CLASSES, ITEMS, MAX_CLASS_LEVEL, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
   unlockedPassives, xpToReach, type MapData, type Player, type RosterUnit, type UnitChange,
 } from '@tactics/core';
-import { api, ApiError, type Account } from './api';
+import { api, ApiError, type Account, type User } from './api';
 import { allMaps, BUILTIN_MAPS } from './maps';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] => {
@@ -91,13 +91,50 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
           className: 'menu-btn primary', textContent: 'Battaglia di prova',
           onclick: pickMap,
         }),
-        ...(player.admin ? [el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } })] : []),
+        ...(player.admin ? [
+          el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { root.hidden = true; go.editor(); } }),
+          el('button', { className: 'menu-btn', textContent: 'Utenti', onclick: () => void users(api.users()) }),
+        ] : []),
         el('button', { className: 'menu-btn', textContent: 'Esci', onclick: () => void api.logout().then(() => auth(), e => auth((e as Error).message)) }),
       ),
     );
   };
 
   const fight = (map: MapData) => { root.hidden = true; go.testBattle(player.roster, map); };
+
+  /** Admin only: list of accounts, with a button to give or take the admin role. */
+  const users = async (request: Promise<User[]>, shown: User[] = []) => {
+    let list = shown;
+    try {
+      list = await request;
+      error = '';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = (e as Error).message;
+    }
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: `Utenti · ${list.length}` }),
+        ),
+        errorLine(),
+        el('div', { className: 'user-list' },
+          ...list.map(u => {
+            const me = u.email === player.email;
+            return el('div', { className: 'user-row' },
+              el('span', { className: 'rn', textContent: u.email }),
+              el('span', { className: 'rc', textContent: `${u.admin ? 'Admin' : 'Giocatore'}${me ? ' · tu' : ''} · dal ${new Date(u.createdAt).toLocaleDateString('it-IT')}` }),
+              ...(me ? [] : [el('button', {
+                className: 'back', textContent: u.admin ? 'Togli admin' : 'Rendi admin',
+                onclick: () => void users(api.setAdmin(u.id, !u.admin), list),
+              })]),
+            );
+          }),
+        ),
+      ),
+    );
+  };
 
   const shop = () => {
     root.replaceChildren(

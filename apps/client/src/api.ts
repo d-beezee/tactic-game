@@ -6,6 +6,8 @@ export interface Account extends Player {
   admin: boolean;
 }
 
+export interface User { id: string; email: string; admin: boolean; createdAt: string }
+
 export class ApiError extends Error {
   /** status 0 = the server could not be reached */
   constructor(public status: number, message: string) { super(message); }
@@ -36,6 +38,8 @@ export const api = {
   me: () => call<Account>('GET', '/me'),
   register: (email: string, password: string) => call<Account>('POST', '/auth/register', { email, password, roster: localRoster() }),
   login: (email: string, password: string) => call<Account>('POST', '/auth/login', { email, password }),
+  users: () => call<User[]>('GET', '/admin/users'),
+  setAdmin: (id: string, admin: boolean) => call<User[]>('PATCH', `/admin/users/${id}`, { admin }),
   logout: () => call<unknown>('POST', '/auth/logout'),
   updateUnit: (id: string, change: UnitChange) => call<Player>('PATCH', `/units/${encodeURIComponent(id)}`, change),
   buy: (itemId: string) => call<Player>('POST', '/shop/buy', { itemId }),

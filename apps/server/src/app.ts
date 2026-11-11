@@ -187,6 +187,29 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     }));
   });
 
+  // user management, admin only; checked on every request so a removed admin loses access at once
+  app.use('/api/admin/*', async (c, next) => {
+    const { rows } = await pool.query('SELECT is_admin FROM users WHERE id = $1', [c.get('userId')]);
+    if (!rows[0]?.is_admin) throw new HttpError(403, 'Riservato all\'admin');
+    await next();
+  });
+
+  const listUsers = async () =>
+    (await pool.query('SELECT id, email, is_admin AS admin, created_at AS "createdAt" FROM users ORDER BY created_at, id')).rows;
+
+  app.get('/api/admin/users', async c => c.json(await listUsers()));
+
+  app.patch('/api/admin/users/:id', async c => {
+    const { admin } = await body(c);
+    const id = c.req.param('id');
+    if (typeof admin !== 'boolean' || !/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(400, 'Richiesta non valida');
+    // an admin cannot demote themselves, so there is always at least one
+    if (id === c.get('userId')) throw new HttpError(400, 'Non puoi togliere il ruolo a te stesso');
+    const { rowCount } = await pool.query('UPDATE users SET is_admin = $2 WHERE id = $1', [id, admin]);
+    if (!rowCount) throw new HttpError(404, 'Utente non trovato');
+    return c.json(await listUsers());
+  });
+
   app.all('/api/*', c => c.json({ error: 'Non trovato' }, 404));
   app.use('*', serveStatic({ root: staticDir }));
   return app;

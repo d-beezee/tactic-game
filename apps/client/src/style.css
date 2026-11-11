@@ -163,3 +163,8 @@ body.editing #rotate { top: 12px; left: 12px; right: auto; }
 .class-card .price { margin-top: auto; color: var(--gold); font-variant-numeric: tabular-nums; }
 .class-card:disabled .price { color: var(--dim); }
 .class-pick button:disabled { opacity: .55; cursor: default; }
+
+/* ---------- users (admin) ---------- */
+.user-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.user-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; min-height: 56px; padding: 6px 14px; border-radius: 10px; background: var(--panel); }
+.user-row .rn { font-size: 18px; overflow-wrap: anywhere; } .user-row .rc { color: var(--dim); font-size: 14px; margin-right: auto; }

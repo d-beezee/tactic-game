@@ -142,7 +142,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 ## Account, oro ed equipaggiamento
 
 - **Account:** email e password. Chi si registra da un browser in cui aveva già giocato porta con sé il roster salvato lì.
-- **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Solo l'admin vede l'editor mappe e può combattere su mappe personalizzate. Gli altri usano la mappa di base, e il server rifiuta le loro richieste con mappe diverse.
+- **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Dal menu "Utenti" un admin può dare o togliere il ruolo agli altri account, ma non può toglierlo a sé stesso: così ne resta sempre almeno uno. Solo gli admin vedono l'editor mappe e possono combattere su mappe personalizzate. Gli altri usano la mappa di base, e il server rifiuta le loro richieste con mappe diverse.
 - **Oro:** si parte con 300. Una vittoria nella battaglia di prova ne dà 20.
 - **Negozio:** vende armi e armature. Ogni acquisto aggiunge una copia all'inventario.
 - **Equipaggiamento:** ogni unità ha due slot, arma e armatura. Una copia di un oggetto può stare su una sola unità alla volta. I bonus sono fissi e si sommano alle statistiche dopo la crescita di livello e prima della passiva.
