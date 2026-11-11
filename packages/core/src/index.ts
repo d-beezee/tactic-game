@@ -8,3 +8,6 @@ export * from './initiative';
 export * from './battle';
 export * from './ai';
 export * from './roster';
+export * from './items';
+export * from './player';
+export * from './testBattle';

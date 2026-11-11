@@ -1,4 +1,5 @@
 import { CLASSES } from './classes';
+import type { Equip } from './items';
 import type { Dir, Pos, Team } from './map';
 import { createUnit, MAX_CLASS_LEVEL, type Unit } from './units';
 
@@ -12,6 +13,8 @@ export interface RosterUnit {
   xp: Record<string, number>;
   /** class id whose passive is equipped (1 slot) */
   passive: string | null;
+  /** equipped items; each one uses up a copy from the player's inventory */
+  equip?: Equip;
 }
 
 export const PASSIVE_LEVEL = 4;
@@ -40,7 +43,7 @@ export const isUnlocked = (r: RosterUnit, classId: string) => !!CLASSES[classId]
 export const unlockedPassives = (r: RosterUnit) => Object.keys(CLASSES).filter(c => classLevel(r, c) >= PASSIVE_LEVEL);
 
 export function unitFromRoster(r: RosterUnit, team: Team, pos: Pos, facing: Dir): Unit {
-  return createUnit(r.id, r.name, team, r.classId, pos, facing, classLevel(r, r.classId), r.passive);
+  return createUnit(r.id, r.name, team, r.classId, pos, facing, classLevel(r, r.classId), r.passive, r.equip);
 }
 
 export interface XpReport { id: string; name: string; classId: string; gained: number; from: number; to: number }
@@ -72,6 +75,7 @@ export const DEFAULT_ROSTER: RosterUnit[] = [
 /**
  * Saved data is untrusted: returns null unless it is a well-formed roster.
  * Rosters saved before progression existed (no xp/passive) are migrated.
+ * Equipment is dropped: it cannot be checked without the owner's inventory.
  */
 export function parseRoster(data: unknown): RosterUnit[] | null {
   if (!Array.isArray(data) || data.length === 0) return null;

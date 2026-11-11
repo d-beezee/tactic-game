@@ -19,8 +19,11 @@ type Mode =
 export class Controller {
   private mode: Mode = { k: 'busy' };
 
-  /** onEnd persists the battle outcome and returns lines for the result screen. */
-  constructor(private scene: BattleScene, private state: BattleState, private onEnd: (s: BattleState) => string[]) {
+  /** the player's actions in order: what the server needs to replay the battle */
+  private log: BattleAction[] = [];
+
+  /** onEnd sends the player's actions to be replayed and returns lines for the result screen. */
+  constructor(private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>) {
     scene.events.on('cell', (p: Pos) => void this.onCell(p));
   }
 
@@ -35,9 +38,10 @@ export class Controller {
     if (this.state.winner) {
       this.scene.setActive(null);
       hud.buttons([]);
-      hud.banner('');
+      hud.banner('Salvataggio…');
+      const title = this.state.winner === PLAYER ? 'Vittoria!' : 'Sconfitta';
       // reload = back to menu
-      return hud.result(this.state.winner === PLAYER ? 'Vittoria!' : 'Sconfitta', this.onEnd(this.state), () => location.reload());
+      return void this.onEnd(this.log).then(lines => { hud.banner(''); hud.result(title, lines, () => location.reload()); });
     }
     this.scene.setActive(u.id);
     hud.card(u);
@@ -124,7 +128,9 @@ export class Controller {
     hud.buttons([]);
     this.scene.clearHighlights();
     try {
+      const mine = this.unit.team === PLAYER;
       this.state = apply(this.state, a);
+      if (mine) this.log.push(a);
     } catch (e) {
       console.error(e);
       return;

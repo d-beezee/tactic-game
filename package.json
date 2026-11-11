@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @tactics/client dev",
-    "build": "pnpm typecheck && pnpm --filter @tactics/client exec vite build --outDir ../../dist --emptyOutDir",
+    "dev": "docker compose up -d && pnpm -r --parallel dev",
+    "build": "pnpm typecheck && pnpm --filter @tactics/client exec vite build --outDir ../../dist --emptyOutDir && pnpm --filter @tactics/server build",
+    "start": "node dist-server/server.cjs",
     "test": "pnpm --filter @tactics/core test",
     "typecheck": "pnpm -r typecheck"
   },

@@ -194,3 +194,82 @@ describe('progression', () => {
     expect(parseRoster([{ id: 'x', name: 'x', classId: 'warrior', xp: { warrior: -5 } }])).toBeNull();
   });
 });
+
+import { buyItem, newPlayer, PlayerError, updateUnit, START_GOLD } from '../src';
+describe('player', () => {
+  it('buying costs gold and needs enough of it', () => {
+    const p = buyItem(newPlayer(), 'keen-blade');
+    expect(p).toMatchObject({ gold: START_GOLD - 120, inventory: { 'keen-blade': 1 } });
+    expect(() => buyItem(p, 'rune-blade')).toThrow(PlayerError);
+    expect(() => buyItem(p, 'constructor')).toThrow(PlayerError);
+  });
+
+  it('equipping needs a free copy in the right slot and changes stats', () => {
+    let p = buyItem(newPlayer(), 'keen-blade');
+    expect(() => updateUnit(p, 'r1', { equip: { armor: 'keen-blade' } })).toThrow(PlayerError);
+    expect(() => updateUnit(p, 'r1', { equip: { weapon: 'rune-blade' } })).toThrow(PlayerError);
+    p = updateUnit(p, 'r1', { equip: { weapon: 'keen-blade' } });
+    expect(unitFromRoster(p.roster[0], 'A', { x: 0, y: 0 }, 'S').stats.atk).toBe(16);
+    expect(() => updateUnit(p, 'r2', { equip: { weapon: 'keen-blade' } })).toThrow(PlayerError); // the only copy is taken
+    p = updateUnit(p, 'r1', { equip: { weapon: null } });
+    expect(updateUnit(p, 'r2', { equip: { weapon: 'keen-blade' } }).roster[1].equip).toEqual({ weapon: 'keen-blade' });
+  });
+
+  it('class and passive changes must be unlocked', () => {
+    const p = newPlayer();
+    expect(() => updateUnit(p, 'r1', { classId: 'paladin' })).toThrow(PlayerError);
+    expect(() => updateUnit(p, 'r1', { classId: 'constructor' })).toThrow(PlayerError);
+    expect(() => updateUnit(p, 'r1', { passive: 'warrior' })).toThrow(PlayerError);
+    expect(updateUnit(p, 'r1', { classId: 'archer' }).roster[0].classId).toBe('archer');
+  });
+});
+
+import { deployTestBattle, finishTestBattle, replayTestBattle, TEST_BATTLE_GOLD, type BattleAction } from '../src';
+describe('test battle on the server', () => {
+  const map = demo as MapData;
+  const p = newPlayer();
+  const deploy = map.spawns.A.slice(0, map.maxDeploy).map((pos, i) => ({ id: p.roster[i].id, pos }));
+  const units = deployTestBattle(p.roster, map, deploy);
+
+  /** plays the player side with the AI too and returns only the player's actions, like the client sends them */
+  const play = (seed: number) => {
+    let s = createBattle(map, units, seed);
+    const log: BattleAction[] = [];
+    while (!s.winner) {
+      const mine = activeUnit(s).team === 'A';
+      for (const a of planTurn(s)) {
+        s = apply(s, a);
+        if (mine) log.push(a);
+        if (s.winner) break;
+      }
+    }
+    return { end: s, log };
+  };
+
+  it('deploy must use own units on own spawn cells', () => {
+    expect(units.filter(u => u.team === 'A').map(u => u.id)).toEqual(deploy.map(d => d.id));
+    expect(() => deployTestBattle(p.roster, map, [{ id: 'r1', pos: map.spawns.B[0] }])).toThrow(PlayerError);
+    expect(() => deployTestBattle(p.roster, map, [{ id: 'nope', pos: map.spawns.A[0] }])).toThrow(PlayerError);
+    expect(() => deployTestBattle(p.roster, map, [deploy[0], deploy[0]])).toThrow(PlayerError);
+    expect(() => deployTestBattle(p.roster, map, [])).toThrow();
+    expect(() => deployTestBattle(p.roster, map, [null])).toThrow(PlayerError);
+  });
+
+  it('replay of the player actions gives the same outcome and pays from it', () => {
+    const { end, log } = play(7);
+    expect(replayTestBattle(map, units, 7, log).xp).toEqual(end.xp);
+    const out = finishTestBattle(p, map, units, 7, log);
+    expect(out.won).toBe(end.winner === 'A');
+    expect(out.player.gold).toBe(START_GOLD + (out.won ? TEST_BATTLE_GOLD : 0));
+    expect(out.report.map(r => [r.id, r.gained])).toEqual(deploy.map(d => [d.id, end.xp[d.id]]).filter(([, xp]) => xp));
+  });
+
+  it('rejects unfinished, illegal and malformed action lists', () => {
+    const { log } = play(7);
+    expect(() => replayTestBattle(map, units, 7, log.slice(0, -1))).toThrow(PlayerError);
+    expect(() => replayTestBattle(map, units, 7, [])).toThrow(PlayerError);
+    expect(() => replayTestBattle(map, units, 7, [{ type: 'move', to: null }])).toThrow(PlayerError);
+    expect(() => replayTestBattle(map, units, 7, [{ type: 'act', actionId: 'strike', target: units[3].pos }])).toThrow(PlayerError);
+    expect(() => replayTestBattle(map, units, 7, 'win')).toThrow(PlayerError);
+  });
+});

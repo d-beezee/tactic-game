@@ -3,5 +3,8 @@
   "provider": "node",
   "packages": {
     "node": "24"
+  },
+  "deploy": {
+    "startCommand": "node dist-server/server.cjs"
   }
 }

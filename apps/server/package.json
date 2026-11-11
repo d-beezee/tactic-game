@@ -1,0 +1,23 @@
+{
+  "name": "@tactics/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "DATABASE_URL=${DATABASE_URL:-postgres://tactics:tactics@localhost:5433/tactics} tsx watch src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --external:pg-native --outfile=../../dist-server/server.cjs",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "@tactics/core": "workspace:*",
+    "hono": "^4.13.17",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

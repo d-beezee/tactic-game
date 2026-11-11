@@ -1,4 +1,5 @@
 import { CLASSES, type Stats } from './classes';
+import { ITEMS, type Equip } from './items';
 import type { Dir, Pos, Team } from './map';
 
 export const MAX_CLASS_LEVEL = 8;
@@ -32,7 +33,7 @@ const GROWING: (keyof Stats)[] = ['maxHp', 'atk', 'def', 'mag', 'speed'];
 
 export function createUnit(
   id: string, name: string, team: Team, classId: string, pos: Pos, facing: Dir,
-  level = 1, passive: string | null = null,
+  level = 1, passive: string | null = null, equip: Equip = {},
 ): Unit {
   const cls = CLASSES[classId];
   if (!cls) throw new Error(`unknown class ${classId}`);
@@ -40,6 +41,10 @@ export function createUnit(
   const lvl = Math.max(1, Math.min(MAX_CLASS_LEVEL, Math.floor(level)));
   const stats = { ...cls.stats };
   for (const k of GROWING) stats[k] = Math.round(stats[k] * (1 + GROWTH_PER_LEVEL * (lvl - 1)));
+  for (const id of Object.values(equip)) {
+    if (!Object.hasOwn(ITEMS, id)) throw new Error(`unknown item ${id}`);
+    for (const [k, v] of Object.entries(ITEMS[id].stats)) stats[k as keyof Stats] = Math.max(1, stats[k as keyof Stats] + v);
+  }
   const p = passive ? CLASSES[passive].passive : null;
   if (p?.stat) stats[p.stat.key] = Math.round((stats[p.stat.key] + (p.stat.add ?? 0)) * (1 + (p.stat.pct ?? 0) / 100));
   const mods: Mods = { range: p?.range ?? 0, healPct: p?.healPct ?? 0, damageTakenPct: p?.damageTakenPct ?? 0 };

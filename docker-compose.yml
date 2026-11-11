@@ -1,0 +1,14 @@
+# Postgres for local development only. In production the database is a Coolify resource.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tactics
+      POSTGRES_PASSWORD: tactics
+      POSTGRES_DB: tactics
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

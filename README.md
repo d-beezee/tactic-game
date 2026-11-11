@@ -2,34 +2,58 @@
 
 Gioco strategico a turni su griglia isometrica a più livelli di altezza. Si gioca nel browser, da desktop e da mobile. È scritto in TypeScript.
 
-**Stato attuale:** MVP locale con quattro parti:
+**Stato attuale:** client più server con account. Le parti sono:
+- accesso con email e password;
 - un menu iniziale;
-- una caserma dove vedi il roster e cambi classe alle unità;
+- una caserma dove vedi il roster, cambi classe alle unità e le equipaggi;
+- un negozio dove compri armi e armature con l'oro;
 - una battaglia di prova contro l'IA, su una mappa a scelta, con schieramento iniziale tramite drag and drop;
 - un editor di mappe.
 
-Server, account e PvP non ci sono ancora.
+Missioni e PvP non ci sono ancora.
 
 ## Avvio
 
-Serve Node 22+ e pnpm.
+Servono Node 24, pnpm e Docker. Docker serve solo per il Postgres di sviluppo.
 
 ```bash
 pnpm install
-pnpm dev        # avvia il client (Vite), raggiungibile anche dalla rete locale
+pnpm dev        # avvia Postgres (docker compose), il server su :3000 e il client (Vite)
 pnpm test       # test della logica di gioco (vitest)
 pnpm typecheck  # controllo dei tipi su tutti i pacchetti
-pnpm build      # typecheck + build di produzione del client in ./dist
+pnpm build      # typecheck + client in ./dist + server in ./dist-server/server.cjs
+pnpm start      # avvia il server di produzione (serve DATABASE_URL)
 ```
+
+In sviluppo Vite gira su una porta sua e inoltra `/api` al server. Il Postgres di sviluppo ascolta su `localhost:5433` con utente, password e database `tactics`. Per usare un altro database, imposta `DATABASE_URL` prima di `pnpm dev`.
 
 ## Deploy (Coolify + Railpack)
 
-Il gioco per ora è un sito statico. Railpack lo compila con `pnpm build` e serve la cartella `dist/` con Caddy, sulla porta 80 (o su `$PORT` se è impostata).
+Il gioco è un solo servizio Node. Lo stesso processo risponde su `/api` e serve i file del client dalla cartella `dist/`. Il database è un Postgres creato come risorsa Coolify sullo stesso server.
+
+Railpack compila con `pnpm build` e avvia `node dist-server/server.cjs`. Il comando di avvio è in `railpack.json` (`deploy.startCommand`): averlo impostato disattiva la modalità sito statico con Caddy usata prima.
 
 In Coolify:
-1. Crea una risorsa dal repository e scegli **Railpack** come build pack.
-2. In **Ports Exposes** metti `80`.
-3. Se il build non riconosce il sito statico, aggiungi la variabile `RAILPACK_SPA_OUTPUT_DIR=dist`.
+1. Crea una risorsa **PostgreSQL** nello stesso progetto e copia il suo URL interno.
+2. Nella risorsa del gioco scegli **Railpack** come build pack.
+3. Aggiungi la variabile `DATABASE_URL` con l'URL interno del database.
+4. In **Ports Exposes** metti `3000`. Il server ascolta su `$PORT`, oppure su 3000 se `PORT` non è impostata.
+5. Come health check usa `GET /api/health`: risponde 200 solo se il database è raggiungibile.
+6. Attiva i backup pianificati sulla risorsa PostgreSQL. Senza backup, perdere il volume vuol dire perdere tutti gli account.
+
+Se nella risorsa era rimasta la variabile `RAILPACK_SPA_OUTPUT_DIR`, toglila: forza la modalità sito statico.
+
+Variabili del server:
+
+| Variabile | Obbligatoria | Significato |
+|---|---|---|
+| `DATABASE_URL` | sì | stringa di connessione a Postgres |
+| `PORT` | no | porta di ascolto, 3000 se manca |
+| `STATIC_DIR` | no | cartella del client compilato, `./dist` se manca |
+
+**Migrazioni:** il server le applica all'avvio, prima di accettare richieste. Sono in `apps/server/src/db.ts`, in un elenco a cui si aggiunge soltanto in fondo. Una migrazione già eseguita in produzione non va più modificata.
+
+**Sessioni:** il cookie di sessione è `httpOnly` e dura 30 giorni. Ha l'attributo `Secure` quando il proxy segnala HTTPS con l'intestazione `X-Forwarded-Proto`, come fa quello di Coolify.
 
 Le versioni di Node e pnpm sono fissate in `package.json` (`engines.node`, `packageManager`) e in `railpack.json`.
 
@@ -41,19 +65,26 @@ packages/core/      logica di gioco pura: nessuna dipendenza grafica, determinis
   src/classes.ts      classi e abilità
   src/units.ts        unità in battaglia
   src/roster.ts       unità del giocatore, progressione e XP
+  src/items.ts        catalogo di armi e armature
+  src/player.ts       stato del giocatore: oro, inventario, acquisti, equipaggiamento
+  src/testBattle.ts   battaglia di prova: nemici, schieramento, replay delle azioni e ricompense
   src/pathfinding.ts  caselle raggiungibili (movimento, salto, ostacoli)
   src/combat.ts       gittata, danno, lato colpito
   src/initiative.ts   ordine dei turni
   src/battle.ts       stato della battaglia e reducer delle azioni
   src/ai.ts           IA nemica
   test/               test vitest
+apps/server/        server Node (Hono) + Postgres
+  src/main.ts         avvio: migrazioni, poi server HTTP
+  src/app.ts          API: account, sessioni, caserma, negozio, battaglie
+  src/db.ts           migrazioni e transazioni
 apps/client/        client Vite + Phaser 3
-  src/menu.ts         menu iniziale e caserma
+  src/menu.ts         accesso, menu iniziale, caserma e negozio
+  src/api.ts          chiamate al server
   src/battle.ts       avvio della battaglia di prova
   src/deploy.ts       schieramento con drag and drop
   src/editor.ts       editor mappe (admin)
   src/maps.ts         mappe di base e mappe salvate
-  src/rosterStore.ts  salvataggio del roster
   src/controller.ts   flusso dei turni e input del giocatore
   src/BattleScene.ts  rendering isometrico, unità, animazioni
   src/hud.ts          interfaccia sopra la mappa
@@ -61,6 +92,8 @@ apps/client/        client Vite + Phaser 3
   public/tiles/       tile del terreno
   public/units/       sprite delle unità
 ```
+
+Le regole stanno tutte in `packages/core`. Il server non le riscrive: per ogni richiesta carica il giocatore, applica una funzione pura del core (`buyItem`, `updateUnit`, `finishTestBattle`) e salva il risultato. Il client usa lo stesso codice solo per mostrare cosa è permesso.
 
 La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il futuro server PvP potrà usare la stessa funzione per validare le mosse. La telecamera ruota a scatti di 90° (pulsanti ⟲ ⟳ o tasti Q/E): la logica resta in coordinate di griglia, e solo `BattleScene` converte in coordinate di vista. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
 
@@ -95,6 +128,35 @@ La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo sta
 
 Nella battaglia di prova i nemici hanno il livello medio delle classi attive del roster. Il codice è in `packages/core/src/roster.ts` (curva XP, sblocchi, `applyBattleXp`) e in `units.ts` (crescita delle statistiche ed effetti delle passive).
 
+## Battaglie e server
+
+XP e oro li decide il server, non il client.
+
+1. A fine schieramento il client manda mappa e posizioni a `POST /api/battles`. Il server controlla la mappa e lo schieramento, costruisce le unità dal roster salvato, sceglie il seme casuale e salva tutto. Risponde con id, seme e unità.
+2. Il client gioca la battaglia in locale con quei dati e registra solo le azioni del giocatore.
+3. A fine battaglia il client manda le azioni a `POST /api/battles/:id/finish`. Il server rigioca la battaglia: applica le azioni del giocatore con `apply` e calcola i turni nemici con la stessa IA. Se un'azione non è valida, o se la lista finisce prima che ci sia un vincitore, rifiuta tutto.
+4. XP e oro vengono dallo stato finale del replay. Il risultato è salvato sulla battaglia: una seconda richiesta con lo stesso id riceve la stessa risposta e non paga due volte.
+
+Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/testBattle.ts`.
+
+## Account, oro ed equipaggiamento
+
+- **Account:** email e password. Chi si registra da un browser in cui aveva già giocato porta con sé il roster salvato lì.
+- **Oro:** si parte con 300. Una vittoria nella battaglia di prova ne dà 20.
+- **Negozio:** vende armi e armature. Ogni acquisto aggiunge una copia all'inventario.
+- **Equipaggiamento:** ogni unità ha due slot, arma e armatura. Una copia di un oggetto può stare su una sola unità alla volta. I bonus sono fissi e si sommano alle statistiche dopo la crescita di livello e prima della passiva.
+
+| Oggetto | Slot | Prezzo | Bonus |
+|---|---|---|---|
+| Lama affilata | Arma | 120 | +2 attacco |
+| Lama runica | Arma | 300 | +4 attacco |
+| Fulcro arcano | Arma | 150 | +3 magia |
+| Giaco di cuoio | Armatura | 100 | +2 difesa |
+| Corazza a piastre | Armatura | 280 | +4 difesa, -1 velocità |
+| Amuleto vitale | Armatura | 160 | +10 PV |
+
+Il catalogo è in `packages/core/src/items.ts`.
+
 ## Formato mappa
 
 ```jsonc
@@ -128,7 +190,12 @@ Dal menu, "Editor mappe".
 
 ## Limiti noti
 
-- Roster e mappe sono salvati in `localStorage`: vengono persi in una finestra privata o se si cancellano i dati del sito.
+- Le mappe create con l'editor sono salvate in `localStorage`: vengono perse in una finestra privata o se si cancellano i dati del sito. Roster, oro e inventario sono invece sul server.
+- La battaglia di prova accetta qualsiasi mappa valida, anche una creata apposta per vincere subito. XP e oro sono calcolati dal server, ma su una mappa così si accumulano in fretta. Le missioni dovranno usare solo mappe salvate sul server.
+- Si può avere una sola battaglia aperta per account: iniziarne una seconda, anche da un'altra scheda, annulla la prima.
+- Non c'è verifica dell'email né recupero della password: servirebbe un servizio di posta.
+- Gli oggetti non si possono rivendere e non hanno restrizioni di classe. I nemici non hanno equipaggiamento.
+- I tentativi di accesso falliti sono contati in memoria: il limite vale per una sola istanza del server e si azzera a ogni riavvio.
 - L'editor non ha un accesso riservato: è aperto a chiunque apra il gioco.
 - Gli attacchi a distanza non controllano la linea di tiro.
 - Non si può zoomare con le dita.
@@ -137,6 +204,5 @@ Dal menu, "Editor mappe".
 
 ## Roadmap
 
-1. Backend Node + Postgres: account, roster, equipaggiamento, negozio.
-2. Missioni: campagna a capitoli e missioni giornaliere create dall'admin, con ricompense in denaro.
-3. PvP live a turni con livelli normalizzati e server autoritativo.
+1. Missioni: campagna a capitoli e missioni giornaliere create dall'admin, con ricompense in denaro.
+2. PvP live a turni con livelli normalizzati e server autoritativo.

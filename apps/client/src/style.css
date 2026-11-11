@@ -151,3 +151,15 @@ body.editing #rotate { top: 12px; left: 12px; right: auto; }
 .hint { margin: 0; color: var(--dim); }
 .xp-report { margin: 0; padding: 0; list-style: none; font-size: 18px; color: var(--text); }
 .xp-report li { margin: 4px 0; }
+
+/* ---------- account, shop, equipment ---------- */
+.auth input { min-width: 260px; min-height: 52px; padding: 0 14px; border: 1px solid #4a4036; border-radius: 12px; background: #2a231d; color: var(--text); font: inherit; font-size: 18px; }
+.auth input:focus-visible { outline: 2px solid var(--gold); }
+.account { margin: 0 0 8px; text-align: center; color: var(--dim); font-variant-numeric: tabular-nums; }
+.error { margin: 0; padding: 10px 14px; border-radius: 10px; background: #5a1f1a; color: #ffd9d2; max-width: 320px; }
+.barracks > .error { grid-column: 1 / -1; max-width: none; }
+.error[hidden] { display: none; }
+.shop { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.class-card .price { margin-top: auto; color: var(--gold); font-variant-numeric: tabular-nums; }
+.class-card:disabled .price { color: var(--dim); }
+.class-pick button:disabled { opacity: .55; cursor: default; }
