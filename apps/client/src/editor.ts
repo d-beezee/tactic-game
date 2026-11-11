@@ -43,6 +43,7 @@ export function startEditor() {
   const scene = new BattleScene(first, [], s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
     mountRotate(s);
+    s.pannable = false; // dragging paints here
     new Editor(s, root, first).start();
   }, editorInsets);
   new Phaser.Game({

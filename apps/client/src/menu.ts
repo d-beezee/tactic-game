@@ -22,6 +22,9 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
   let selected = '';
   /** last failed request, shown on the current screen */
   let error = '';
+  /** shop: item waiting for a second tap to confirm, and the last purchase */
+  let pending = '';
+  let notice = '';
 
   const errorLine = () => el('p', { className: 'error', role: 'alert', textContent: error, hidden: !error });
 
@@ -44,22 +47,35 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
     redraw();
   };
 
-  const auth = (message = '') => {
-    const email = el('input', { type: 'email', name: 'email', autocomplete: 'email', required: true, placeholder: 'Email' });
+  const auth = (message = '', typed = '') => {
+    const email = el('input', { type: 'email', name: 'email', autocomplete: 'email', required: true, placeholder: 'Email', value: typed });
     const password = el('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true, minLength: 8, placeholder: 'Password (almeno 8 caratteri)' });
+    const show = el('button', {
+      type: 'button', className: 'reveal', textContent: 'Mostra',
+      onclick: () => { const hidden = password.type === 'password'; password.type = hidden ? 'text' : 'password'; show.textContent = hidden ? 'Nascondi' : 'Mostra'; },
+    });
+    const problem = el('p', { className: 'error', role: 'alert', textContent: message, hidden: !message });
     const send = async (request: (email: string, password: string) => Promise<Account>) => {
-      if (!form.reportValidity()) return;
+      // our own messages, in the game's style, instead of the browser's tooltip
+      const bad = !email.validity.valid ? [email, 'Scrivi un indirizzo email valido.'] as const
+        : !password.validity.valid ? [password, 'La password deve avere almeno 8 caratteri.'] as const : null;
+      if (bad) {
+        problem.textContent = bad[1];
+        problem.hidden = false;
+        return bad[0].focus();
+      }
       try {
         enter(await request(email.value, password.value));
       } catch (e) {
-        auth((e as Error).message);
+        auth((e as Error).message, email.value);
       }
     };
-    const form = el('form', { className: 'menu-main auth' },
+    const form = el('form', { className: 'menu-main auth', noValidate: true },
       el('h1', { className: 'title', textContent: 'Tactics' }),
-      email, password,
-      el('p', { className: 'error', role: 'alert', textContent: message, hidden: !message }),
+      email, el('div', { className: 'pw' }, password, show),
+      problem,
       el('button', { className: 'menu-btn primary', type: 'submit', textContent: 'Accedi' }),
+      el('p', { className: 'hint or', textContent: 'Prima volta qui?' }),
       el('button', { className: 'menu-btn', type: 'button', textContent: 'Crea account', onclick: () => void send(api.register) }),
     );
     form.onsubmit = e => { e.preventDefault(); void send(api.login); };
@@ -81,6 +97,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
 
   const main = () => {
     error = '';
+    pending = notice = '';
     root.replaceChildren(
       el('div', { className: 'menu-main' },
         el('h1', { className: 'title', textContent: 'Tactics' }),
@@ -144,14 +161,22 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
           el('h2', { textContent: `Negozio · ${player.gold} oro` }),
         ),
         errorLine(),
+        el('p', { className: 'notice', role: 'status', textContent: notice, hidden: !notice }),
         el('div', { className: 'class-grid shop' },
           ...Object.values(ITEMS).map(i => {
             const missing = i.price - player.gold;
-            return el('button', { className: 'class-card', disabled: missing > 0, onclick: () => void run(api.buy(i.id), shop) },
+            const confirm = pending === i.id && missing <= 0;
+            // two taps: the first asks, the second buys (a purchase cannot be undone)
+            const buy = () => {
+              if (!confirm) { pending = i.id; notice = ''; return shop(); }
+              pending = '';
+              void run(api.buy(i.id), () => { notice = error ? '' : `Comprato: ${i.name}. Equipaggialo in caserma.`; shop(); });
+            };
+            return el('button', { className: `class-card${confirm ? ' confirm' : ''}`, disabled: missing > 0, onclick: buy },
               el('span', { className: 'cn', textContent: i.name }),
               el('span', { className: 'cl', textContent: `${SLOT_LABELS[i.slot]} · ${itemBonus(i)}` }),
               el('span', { className: 'cl', textContent: `Possedute: ${player.inventory[i.id] ?? 0}` }),
-              el('span', { className: 'price', textContent: missing > 0 ? `${i.price} oro · mancano ${missing}` : `Compra · ${i.price} oro` }),
+              el('span', { className: 'price', textContent: missing > 0 ? `${i.price} oro · mancano ${missing}` : confirm ? `Tocca di nuovo per comprare · ${i.price} oro` : `Compra · ${i.price} oro` }),
             );
           }),
         ),
@@ -207,7 +232,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
           onclick: () => update(unit.id, { classId: c.id }),
         },
           el('span', { className: 'cn', textContent: c.name }),
-          el('span', { className: 'cl', textContent: missing.length ? 'Bloccata' : `Lv ${lvl}${active ? ' · attiva' : ''}` }),
+          el('span', { className: 'cl', textContent: missing.length ? 'Bloccata' : `Lv ${lvl}${active ? ' · attiva' : ''} · ${max ? 'max' : `${xp - xpToReach(lvl)}/${xpToReach(lvl + 1) - xpToReach(lvl)} XP`}` }),
           missing.length
             ? el('span', { className: 'req', textContent: `Richiede ${missing.map(m => `${CLASSES[m.classId].name} ${m.level}`).join(' · ')}` })
             : el('span', { className: 'xpbar', title: max ? 'Livello massimo' : `${xp} / ${xpToReach(lvl + 1)} XP` }, Object.assign(el('span'), { style: `width:${pct}%` } as object)),
@@ -267,10 +292,10 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
         el('section', { className: 'detail' },
           el('h3', { textContent: unit.name }),
           el('div', { className: 'label', textContent: 'Classi' }), classes,
-          el('div', { className: 'label', textContent: 'Passiva (1 slot)' }), passives,
-          ...equipment, ...noItems,
           el('div', { className: 'label', textContent: `Statistiche · ${cls.name} Lv ${eff.level}` }), stats,
           el('div', { className: 'label', textContent: 'Abilità' }), actions,
+          el('div', { className: 'label', textContent: 'Passiva (1 slot)' }), passives,
+          ...equipment, ...noItems,
         ),
       ),
     );

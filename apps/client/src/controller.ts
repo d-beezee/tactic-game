@@ -22,6 +22,9 @@ export class Controller {
   /** the player's actions in order: what the server needs to replay the battle */
   private log: BattleAction[] = [];
 
+  /** where the active unit will face when the turn ends: its last step, or where it already looked */
+  private facing: Dir = 'S';
+
   /** onEnd sends the player's actions to be replayed and returns lines for the result screen. */
   constructor(private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>) {
     scene.events.on('cell', (p: Pos) => void this.onCell(p));
@@ -44,17 +47,19 @@ export class Controller {
       return void this.onEnd(this.log).then(lines => { hud.banner(''); hud.result(title, lines, () => location.reload()); });
     }
     this.scene.setActive(u.id);
+    this.scene.focus(u.pos);
+    this.facing = u.facing;
     hud.card(u);
     if (u.team === PLAYER) this.menu();
     else void this.runAi();
   }
 
   private menu() {
-    if (this.state.moved && this.state.acted) return this.face();
     const u = this.unit;
     this.mode = { k: 'idle' };
     this.scene.clearHighlights();
-    hud.banner(`Turno di ${u.name} · round ${this.state.round}`);
+    this.scene.showFacing(u.id, this.facing);
+    hud.banner(this.state.moved && this.state.acted ? `${u.name} ha finito: chiudi il turno` : `Turno di ${u.name} · round ${this.state.round}`);
     const actions = CLASSES[u.classId].actions.map(a => {
       const n = targetsFor(this.state, u, a).length;
       return {
@@ -69,7 +74,8 @@ export class Controller {
     hud.buttons([
       { label: 'Muovi', hint: this.state.moved ? 'già fatto' : undefined, disabled: this.state.moved, onClick: () => this.move() },
       ...actions,
-      { label: 'Fine turno', primary: true, onClick: () => this.face() },
+      { label: 'Direzione', hint: 'facoltativa', onClick: () => this.face() },
+      { label: 'Fine turno', primary: true, onClick: () => void this.end(this.facing) },
     ]);
   }
 
@@ -95,9 +101,12 @@ export class Controller {
   private face() {
     this.mode = { k: 'face' };
     this.scene.clearHighlights();
-    hud.banner('Scegli la direzione (o tocca una casella)');
-    const back = this.state.moved && this.state.acted ? [] : [{ label: 'Indietro', onClick: () => this.menu() }];
-    hud.buttons([...back, hud.dirs(d => void this.end(this.scene.gridDir(d)))]);
+    hud.banner('Scegli dove guarda e chiudi il turno');
+    const id = this.unit.id;
+    hud.buttons([
+      { label: 'Indietro', onClick: () => this.menu() },
+      hud.dirs(d => void this.end(this.scene.gridDir(d)), d => this.scene.showFacing(id, d ? this.scene.gridDir(d) : this.facing)),
+    ]);
   }
 
   private async end(facing: Dir) {
@@ -137,11 +146,17 @@ export class Controller {
     }
     const byId = (id: string) => this.state.units.find(u => u.id === id)!;
     for (const ev of this.state.events) {
-      if (ev.type === 'move') await this.scene.animateMove(ev.unitId, ev.path);
+      if (ev.type === 'move') {
+        await this.scene.animateMove(ev.unitId, ev.path);
+        // the rules keep the old facing after a move; the natural default is the direction of the last step
+        if (ev.path.length > 1) this.facing = facingToward(ev.path[ev.path.length - 2], ev.path[ev.path.length - 1]);
+      }
+      if (ev.type === 'damage' || ev.type === 'heal') this.facing = this.unit.facing;
       if (ev.type === 'damage') this.scene.floatText(byId(ev.unitId), `${ev.amount}${ev.side === 'back' ? ' alle spalle!' : ev.side === 'flank' ? ' di fianco' : ''}`, '#ffd2c2');
       if (ev.type === 'heal') this.scene.floatText(byId(ev.unitId), `+${ev.amount}`, '#b6f29a');
     }
     for (const u of this.state.units) this.scene.syncUnit(u);
+    if (a.type !== 'end') this.scene.showFacing(this.unit.id, this.facing);
     hud.card(this.unit);
     if (this.state.events.some(e => e.type === 'damage' || e.type === 'heal')) await wait(500);
   }
@@ -150,6 +165,7 @@ export class Controller {
     this.mode = { k: 'busy' };
     hud.buttons([]);
     hud.banner(`Turno nemico: ${this.unit.name}`);
+    this.scene.focus(this.unit.pos);
     await wait(500);
     for (const a of planTurn(this.state)) {
       if (a.type === 'act') {

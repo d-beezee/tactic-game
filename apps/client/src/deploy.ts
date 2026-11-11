@@ -25,6 +25,7 @@ export class Deploy {
 
   start() {
     this.scene.game.canvas.addEventListener('pointerdown', this.onCanvasDown);
+    this.scene.focus(this.spawns[0]);
     this.render();
   }
 
@@ -37,10 +38,13 @@ export class Deploy {
     this.scene.clearHighlights();
     this.scene.highlight(this.spawns, SPAWN);
     if (this.drag?.hover) this.scene.highlight([this.drag.hover], HOVER);
-    hud.banner(`Schieramento · ${this.placed.length}/${this.max} · trascina sulle caselle blu`);
+    const full = this.placed.length >= this.max;
+    hud.banner(full
+      ? `Squadra al completo · ${this.max}/${this.max} · trascina un'unità su una casella occupata per sostituirla`
+      : `Schieramento · ${this.placed.length}/${this.max} · tocca o trascina un'unità sulle caselle blu`);
 
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
-      const item = Object.assign(document.createElement('div'), { className: 'tray-item' });
+      const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
       item.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
       item.onpointerdown = e => { hud.card(unitFromRoster(r, 'A', { x: 0, y: 0 }, 'S')); this.startDrag({ kind: 'tray', r }, e); };
       return item;
@@ -70,6 +74,7 @@ export class Deploy {
     ghost.hidden = true;
     document.body.append(ghost);
     this.drag = { src, ghost, startX: e.clientX, startY: e.clientY, moved: false, hover: null };
+    this.scene.panLock = true;
 
     const move = (ev: PointerEvent) => {
       const d = this.drag!;
@@ -86,6 +91,7 @@ export class Deploy {
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       const d = this.drag!;
+      this.scene.panLock = false;
       ghost.remove();
       this.drag = null;
       if (ev.type === 'pointercancel') return this.render();
