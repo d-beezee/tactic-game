@@ -88,6 +88,7 @@ export const api = {
   pvpLeave: (id: string) => call<unknown>('POST', `/pvp/${id}/leave`),
   missions: () => call<Mission[]>('GET', '/missions'),
   createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; recruit: Recruit | null; trackId: string | null }) => call<Mission[]>('POST', '/admin/missions', m),
+  updateMission: (id: string, m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; recruit: Recruit | null; trackId: string | null }) => call<Mission[]>('PUT', `/admin/missions/${id}`, m),
   deleteMission: (id: string) => call<Mission[]>('DELETE', `/admin/missions/${id}`),
   music: () => call<Music>('GET', '/music'),
   createTrack: (t: { name: string; code: string }) => call<Music>('POST', '/admin/tracks', t),

@@ -379,17 +379,18 @@ export function showMenu(go: {
     );
   };
 
-  /** Admin only: create and delete daily missions. The draft survives the redraw after a failed create. */
+  /** Admin only: create, edit and delete daily missions. The draft survives the redraw after a failed create. */
   let draft: {
-    name: string; mapId: string; gold: number; enemies: MissionEnemy[]; raceId: string; classId: string; level: number; trackId: string | null;
+    id: string | null; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; raceId: string; classId: string; level: number; trackId: string | null;
     recruit: { on: boolean; name: string; raceId: string; classId: string };
   } | null = null;
   const manageMissions = async (request: Promise<Mission[]>, shown: Mission[] = []) => {
     const list = await loadMissions(request, shown);
     if (!list) return auth();
     const maps = allMaps();
+    if (draft?.id && !list.some(m => m.id === draft!.id)) draft = null;
     if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = {
-      name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), raceId: DEFAULT_RACE, classId: 'warrior', level: 1, trackId: null,
+      id: null, name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), raceId: DEFAULT_RACE, classId: 'warrior', level: 1, trackId: null,
       recruit: { on: false, name: '', raceId: 'corvid', classId: 'lancer' },
     };
     const d = draft;
@@ -471,14 +472,16 @@ export function showMenu(go: {
         el('label', { className: 'hint' }, recruitOn, ' Alla prima vittoria si unisce una recluta'),
         recruitFields,
       ),
-      el('button', { className: 'menu-btn primary', type: 'submit', textContent: 'Crea missione' }),
+      ...(d.id ? [el('button', { className: 'menu-btn', type: 'button', textContent: 'Annulla modifica', onclick: () => { draft = null; void manageMissions(Promise.resolve(list)); } })] : []),
+      el('button', { className: 'menu-btn primary', type: 'submit', textContent: d.id ? 'Salva modifiche' : 'Crea missione' }),
     );
     form.onsubmit = e => {
       e.preventDefault();
-      const created = api.createMission({
+      const m = {
         name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies, trackId: d.trackId,
         recruit: rc.on ? { name: rc.name, raceId: rc.raceId, classId: rc.classId } : null,
-      }).then(l => { draft = null; return l; });
+      };
+      const created = (d.id ? api.updateMission(d.id, m) : api.createMission(m)).then(l => { draft = null; return l; });
       void manageMissions(created, list);
     };
     root.replaceChildren(
@@ -493,6 +496,17 @@ export function showMenu(go: {
           ...list.map(m => el('div', { className: 'user-row' },
             el('span', { className: 'rn', textContent: m.name }),
             el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}${m.recruit ? ` · recluta ${m.recruit.name}` : ''}${trackName(m.trackId) ? ` · ♪ ${trackName(m.trackId)}` : ''}` }),
+            el('button', {
+              className: 'back', textContent: 'Modifica',
+              onclick: () => {
+                draft = {
+                  ...draft!, id: m.id, name: m.name, mapId: m.mapId, gold: m.gold, enemies: m.enemies.map(e => ({ ...e, pos: { ...e.pos } })), trackId: m.trackId,
+                  recruit: m.recruit ? { on: true, ...m.recruit } : { on: false, name: '', raceId: 'corvid', classId: 'lancer' },
+                };
+                void manageMissions(Promise.resolve(list));
+                window.scrollTo(0, 0);
+              },
+            }),
             el('button', {
               className: 'back', textContent: 'Elimina',
               onclick: () => confirm(`Eliminare la missione "${m.name}"?`) && void manageMissions(api.deleteMission(m.id), list),

@@ -328,7 +328,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     return c.json(await listMaps());
   });
 
-  app.post('/api/admin/missions', async c => {
+  const missionBody = async (c: Context) => {
     const b = await body(c);
     const name = typeof b.name === 'string' ? b.name.trim() : '';
     if (!name || name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
@@ -337,8 +337,20 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     if (!map) throw new HttpError(400, 'Mappa non trovata');
     const enemies = parseMissionEnemies(map, b.enemies);
     const recruit = parseRecruit(b.recruit);
-    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, recruit, track_id) VALUES ($1, $2, $3, $4, $5, $6)',
-      [name, b.mapId, b.gold, JSON.stringify(enemies), recruit && JSON.stringify(recruit), await trackId(b.trackId)]);
+    return [name, b.mapId, b.gold, JSON.stringify(enemies), recruit && JSON.stringify(recruit), await trackId(b.trackId)];
+  };
+
+  app.post('/api/admin/missions', async c => {
+    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, recruit, track_id) VALUES ($1, $2, $3, $4, $5, $6)', await missionBody(c));
+    return c.json(await listMissions(c.get('userId')));
+  });
+
+  // today's wins stay: a player who already won it does not get paid again for the edited mission
+  app.put('/api/admin/missions/:id', async c => {
+    const m = await missionBody(c), id = c.req.param('id');
+    const { rowCount } = isUuid(id) ? await pool.query(
+      'UPDATE missions SET name = $2, map_id = $3, gold = $4, enemies = $5, recruit = $6, track_id = $7 WHERE id = $1', [id, ...m]) : { rowCount: 0 };
+    if (!rowCount) throw new HttpError(404, 'Missione non trovata');
     return c.json(await listMissions(c.get('userId')));
   });
 
