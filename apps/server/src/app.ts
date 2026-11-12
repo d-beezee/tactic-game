@@ -17,6 +17,8 @@ const COOKIE = 'sid';
 const SESSION_DAYS = 30;
 const MAX_FAILS = 10, FAIL_WINDOW_MS = 15 * 60_000;
 const MAX_MISSION_GOLD = 10_000;
+const MAX_TRACK_CODE = 20_000;
+const MUSIC_SLOTS = ['menu', 'battle'];
 /** The game's day, for daily missions: midnight in Italy, whatever the server's time zone. */
 const TODAY = `(now() AT TIME ZONE 'Europe/Rome')::date`;
 /** A PvP player not heard from for this long loses; a lobby player this stale is not matched. */
@@ -247,7 +249,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
       : undefined;
 
   const listMissions = async (userId: string) => (await pool.query(
-    `SELECT m.id, m.name, m.map_id AS "mapId", m.gold, m.enemies,
+    `SELECT m.id, m.name, m.map_id AS "mapId", m.gold, m.enemies, m.track_id AS "trackId",
        EXISTS (SELECT 1 FROM mission_wins w WHERE w.mission_id = m.id AND w.user_id = $1 AND w.day = ${TODAY}) AS done
      FROM missions m ORDER BY m.created_at, m.id`, [userId])).rows;
 
@@ -261,6 +263,25 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   const listMaps = async () => (await pool.query("SELECT data FROM maps ORDER BY data->>'name', id")).rows.map(r => r.data as MapData);
 
   app.get('/api/maps', async c => c.json(await listMaps()));
+
+  /** Every track with its code (players need it to play), and the track chosen for each slot. */
+  const listMusic = async () => {
+    const [{ rows: tracks }, { rows: slots }] = await Promise.all([
+      pool.query('SELECT id, name, code FROM tracks ORDER BY name, id'),
+      pool.query('SELECT slot, track_id FROM music_slots'),
+    ]);
+    const chosen = (slot: string) => slots.find(s => s.slot === slot)?.track_id ?? null;
+    return { tracks, menu: chosen('menu'), battle: chosen('battle') };
+  };
+
+  app.get('/api/music', async c => c.json(await listMusic()));
+
+  /** null, or the id of a saved track; anything else is refused. */
+  const trackId = async (id: unknown) => {
+    if (id === null || id === undefined) return null;
+    if (isUuid(id) && (await pool.query('SELECT 1 FROM tracks WHERE id = $1', [id])).rowCount) return id;
+    throw new HttpError(400, 'Musica non trovata');
+  };
 
   // user and map management, admin only; checked on every request so a removed admin loses access at once
   app.use('/api/admin/*', async (c, next) => {
@@ -311,7 +332,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const map = await findMap(b.mapId);
     if (!map) throw new HttpError(400, 'Mappa non trovata');
     const enemies = parseMissionEnemies(map, b.enemies);
-    await pool.query('INSERT INTO missions (name, map_id, gold, enemies) VALUES ($1, $2, $3, $4)', [name, b.mapId, b.gold, JSON.stringify(enemies)]);
+    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, track_id) VALUES ($1, $2, $3, $4, $5)', [name, b.mapId, b.gold, JSON.stringify(enemies), await trackId(b.trackId)]);
     return c.json(await listMissions(c.get('userId')));
   });
 
@@ -319,6 +340,44 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const id = c.req.param('id');
     if (isUuid(id)) await pool.query('DELETE FROM missions WHERE id = $1', [id]);
     return c.json(await listMissions(c.get('userId')));
+  });
+
+  // the code runs in every player's browser: only admins can save it
+  const trackBody = async (c: Context) => {
+    const b = await body(c);
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    if (!name || name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
+    if (typeof b.code !== 'string' || !b.code.trim() || b.code.length > MAX_TRACK_CODE) throw new HttpError(400, `Il codice deve avere tra 1 e ${MAX_TRACK_CODE} caratteri`);
+    return { name, code: b.code };
+  };
+
+  app.post('/api/admin/tracks', async c => {
+    const t = await trackBody(c);
+    await pool.query('INSERT INTO tracks (name, code) VALUES ($1, $2)', [t.name, t.code]);
+    return c.json(await listMusic());
+  });
+
+  app.put('/api/admin/tracks/:id', async c => {
+    const t = await trackBody(c), id = c.req.param('id');
+    const { rowCount } = isUuid(id) ? await pool.query('UPDATE tracks SET name = $2, code = $3 WHERE id = $1', [id, t.name, t.code]) : { rowCount: 0 };
+    if (!rowCount) throw new HttpError(404, 'Musica non trovata');
+    return c.json(await listMusic());
+  });
+
+  // its slots go empty and its missions fall back to the battle music
+  app.delete('/api/admin/tracks/:id', async c => {
+    const id = c.req.param('id');
+    if (isUuid(id)) await pool.query('DELETE FROM tracks WHERE id = $1', [id]);
+    return c.json(await listMusic());
+  });
+
+  app.put('/api/admin/music/:slot', async c => {
+    const slot = c.req.param('slot');
+    if (!MUSIC_SLOTS.includes(slot)) throw new HttpError(404, 'Non trovato');
+    const id = await trackId((await body(c)).trackId);
+    if (id) await pool.query('INSERT INTO music_slots VALUES ($1, $2) ON CONFLICT (slot) DO UPDATE SET track_id = $2', [slot, id]);
+    else await pool.query('DELETE FROM music_slots WHERE slot = $1', [slot]);
+    return c.json(await listMusic());
   });
 
   // ---------- PvP ----------

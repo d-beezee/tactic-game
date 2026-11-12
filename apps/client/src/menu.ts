@@ -2,8 +2,9 @@ import {
   CAMPAIGN, CLASSES, chapterOpen, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
   unlockedPassives, xpToReach, type Chapter, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
-import { api, ApiError, type Account, type Mission, type PvpState, type User } from './api';
+import { api, ApiError, type Account, type Mission, type Music, type PvpState, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
+import { getLibrary, music, playCode, setLibrary } from './music';
 import { play } from './sfx';
 import { reducedMotion, saveSettings, settings } from './theme';
 
@@ -54,6 +55,7 @@ async function backdrop(roster: RosterUnit[]) {
 export const AFTER_KEY = 'tactics.after';
 
 const leaveMenu = () => {
+  music(null);
   backdropGen++;
   stopBackdrop?.();
   stopBackdrop = null;
@@ -93,6 +95,7 @@ export function showMenu(go: {
     selected = player.roster[0].id;
     error = '';
     void backdrop(player.roster);
+    void api.music().then(setLibrary, () => { /* no music list: the menu works silently */ });
     main();
     // back from a chapter: straight to the chapter list
     try {
@@ -164,6 +167,7 @@ export function showMenu(go: {
 
   const main = () => {
     pvpWait++;
+    music('menu'); // also stops an admin preview
     error = '';
     pending = notice = '';
     root.replaceChildren(
@@ -178,6 +182,7 @@ export function showMenu(go: {
         el('button', { className: 'menu-btn', textContent: 'Battaglia di prova', onclick: () => void pickMap() }),
         ...(player.admin ? [
           el('button', { className: 'menu-btn', textContent: 'Gestisci missioni', onclick: () => void manageMissions(api.missions()) }),
+          el('button', { className: 'menu-btn', textContent: 'Musiche', onclick: () => void musicAdmin(api.music()) }),
           el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { leaveMenu(); go.editor(); } }),
           el('button', { className: 'menu-btn', textContent: 'Utenti', onclick: () => void users(api.users()) }),
         ] : []),
@@ -355,12 +360,12 @@ export function showMenu(go: {
   };
 
   /** Admin only: create and delete daily missions. The draft survives the redraw after a failed create. */
-  let draft: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; classId: string; level: number } | null = null;
+  let draft: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; classId: string; level: number; trackId: string | null } | null = null;
   const manageMissions = async (request: Promise<Mission[]>, shown: Mission[] = []) => {
     const list = await loadMissions(request, shown);
     if (!list) return auth();
     const maps = allMaps();
-    if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = { name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), classId: 'warrior', level: 1 };
+    if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = { name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), classId: 'warrior', level: 1, trackId: null };
     const d = draft;
     const current = () => maps.find(m => m.id === d.mapId)!;
 
@@ -368,6 +373,11 @@ export function showMenu(go: {
     const map = el('select', { className: 'field', ariaLabel: 'Mappa', onchange: () => { d.mapId = map.value; d.enemies = defaultEnemies(current()); drawGrid(); } },
       ...maps.map(m => el('option', { value: m.id, textContent: m.name, selected: m.id === d.mapId })));
     const gold = el('input', { className: 'field', type: 'number', min: '0', max: '10000', step: '1', value: String(d.gold), ariaLabel: 'Oro', oninput: () => { d.gold = Number(gold.value); } });
+    const tracks = getLibrary().tracks;
+    if (!tracks.some(t => t.id === d.trackId)) d.trackId = null;
+    const track = el('select', { className: 'field', ariaLabel: 'Musica', onchange: () => { d.trackId = track.value || null; } },
+      el('option', { value: '', textContent: 'Musica: quella delle battaglie' }),
+      ...tracks.map(t => el('option', { value: t.id, textContent: `Musica: ${t.name}`, selected: t.id === d.trackId })));
     const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } },
       ...Object.values(CLASSES).map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
     const lvl = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.level), ariaLabel: 'Livello del prossimo nemico',
@@ -402,7 +412,7 @@ export function showMenu(go: {
     drawGrid();
 
     const form = el('form', { className: 'mission-form' },
-      name, map, el('label', {}, gold, ' oro'),
+      name, map, el('label', {}, gold, ' oro'), track,
       el('div', { className: 'enemy-editor' },
         el('p', { className: 'hint', textContent: 'Tocca una casella per piazzare un nemico, toccalo di nuovo per toglierlo. In blu le partenze del giocatore.' }),
         el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), cls, el('label', {}, 'livello ', lvl), count),
@@ -412,7 +422,7 @@ export function showMenu(go: {
     );
     form.onsubmit = e => {
       e.preventDefault();
-      const created = api.createMission({ name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies }).then(l => { draft = null; return l; });
+      const created = api.createMission({ name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies, trackId: d.trackId }).then(l => { draft = null; return l; });
       void manageMissions(created, list);
     };
     root.replaceChildren(
@@ -426,10 +436,82 @@ export function showMenu(go: {
         el('div', { className: 'user-list' },
           ...list.map(m => el('div', { className: 'user-row' },
             el('span', { className: 'rn', textContent: m.name }),
-            el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}` }),
+            el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}${trackName(m.trackId) ? ` · ♪ ${trackName(m.trackId)}` : ''}` }),
             el('button', {
               className: 'back', textContent: 'Elimina',
               onclick: () => confirm(`Eliminare la missione "${m.name}"?`) && void manageMissions(api.deleteMission(m.id), list),
+            }),
+          )),
+        ),
+      ),
+    );
+  };
+
+  const trackName = (id: string | null) => getLibrary().tracks.find(t => t.id === id)?.name;
+
+  /** Admin only: save Strudel tracks, try them, pick the menu and battle music. The draft survives a failed save. */
+  let trackDraft: { id: string | null; name: string; code: string } = { id: null, name: '', code: '' };
+  const musicAdmin = async (request: Promise<Music>, after?: () => void) => {
+    try {
+      setLibrary(await request);
+      error = '';
+      after?.();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = (e as Error).message;
+    }
+    const lib = getLibrary(), d = trackDraft;
+    if (d.id && !lib.tracks.some(t => t.id === d.id)) trackDraft = { id: null, name: '', code: '' };
+    const preview = (code: string) => playCode(code).then(() => { problem.hidden = true; }, e => {
+      problem.textContent = `Errore nel codice: ${(e as Error).message}`;
+      problem.hidden = false;
+    });
+    const problem = el('p', { className: 'error', role: 'alert', hidden: true });
+
+    const slot = (s: 'menu' | 'battle', label: string) => {
+      const pick = el('select', { className: 'field', ariaLabel: label, onchange: () => void musicAdmin(api.setMusicSlot(s, pick.value || null)) },
+        el('option', { value: '', textContent: 'Nessuna (silenzio)' }),
+        ...lib.tracks.map(t => el('option', { value: t.id, textContent: t.name, selected: t.id === lib[s] })));
+      return el('label', {}, label, pick);
+    };
+
+    const name = el('input', { className: 'field', placeholder: 'Nome del brano', ariaLabel: 'Nome del brano', maxLength: 60, required: true, value: d.name, oninput: () => { d.name = name.value; } });
+    const code = el('textarea', {
+      className: 'field code', ariaLabel: 'Codice Strudel', required: true, maxLength: 20000, spellcheck: false, value: d.code,
+      placeholder: 'Incolla qui il codice da strudel.cc', oninput: () => { d.code = code.value; },
+    });
+    const form = el('form', { className: 'mission-form' },
+      name, code, problem,
+      el('button', { className: 'menu-btn', type: 'button', textContent: 'Ascolta', onclick: () => void preview(d.code) }),
+      el('button', { className: 'menu-btn', type: 'button', textContent: 'Stop', onclick: () => void playCode(null) }),
+      ...(d.id ? [el('button', { className: 'menu-btn', type: 'button', textContent: 'Annulla modifica', onclick: () => { trackDraft = { id: null, name: '', code: '' }; void musicAdmin(Promise.resolve(lib)); } })] : []),
+      el('button', { className: 'menu-btn primary', type: 'submit', textContent: d.id ? 'Salva modifiche' : 'Salva brano' }),
+    );
+    form.onsubmit = e => {
+      e.preventDefault();
+      const t = { name: d.name, code: d.code };
+      void musicAdmin(d.id ? api.updateTrack(d.id, t) : api.createTrack(t), () => { trackDraft = { id: null, name: '', code: '' }; });
+    };
+
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: `Musiche · ${lib.tracks.length}` }),
+        ),
+        errorLine(),
+        el('div', { className: 'mission-form' }, slot('menu', 'Menu'), slot('battle', 'Battaglie')),
+        el('p', { className: 'hint wide', textContent: 'Le missioni giornaliere possono avere una musica propria: si sceglie quando le crei.' }),
+        form,
+        el('div', { className: 'user-list' },
+          ...lib.tracks.map(t => el('div', { className: 'user-row' },
+            el('span', { className: 'rn', textContent: t.name }),
+            el('span', { className: 'rc', textContent: [t.id === lib.menu && 'Menu', t.id === lib.battle && 'Battaglie'].filter(Boolean).join(' · ') || 'Non in uso di default' }),
+            el('button', { className: 'back', textContent: 'Ascolta', onclick: () => void preview(t.code) }),
+            el('button', { className: 'back', textContent: 'Modifica', onclick: () => { trackDraft = { ...t }; void musicAdmin(Promise.resolve(lib)); } }),
+            el('button', {
+              className: 'back', textContent: 'Elimina',
+              onclick: () => confirm(`Eliminare "${t.name}"? Le missioni che la usano passano alla musica delle battaglie.`) && void musicAdmin(api.deleteTrack(t.id)),
             }),
           )),
         ),

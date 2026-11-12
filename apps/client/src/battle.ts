@@ -5,6 +5,7 @@ import { BattleScene } from './BattleScene';
 import { Controller } from './controller';
 import { Deploy } from './deploy';
 import { hud, mountRotate } from './hud';
+import { music } from './music';
 
 /** A campaign chapter in play; onDone runs after the result screen, with the battle already torn down. */
 export interface ChapterRun { chapter: Chapter; onDone: (win: boolean) => void }
@@ -21,6 +22,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
   const enemies = ch ? missionUnits(ch.enemies) : mission ? missionUnits(mission.enemies) : testEnemies(roster, map);
   const target = ch ? { chapterId: ch.id } : missionId ? { missionId } : { mapId: map.id };
 
+  music('battle', mission?.trackId);
   document.getElementById('hud')!.hidden = false;
   // the prologue is played on the brothers' monitor
   document.getElementById('game')!.classList.toggle('crt', !!ch?.crt);

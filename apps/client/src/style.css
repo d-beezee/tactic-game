@@ -441,3 +441,4 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
 }
+.mission-form textarea.code { flex: 1 1 100%; min-height: 260px; padding: 12px 14px; font: 14px/1.5 ui-monospace, monospace; resize: vertical; white-space: pre; }

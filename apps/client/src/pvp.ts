@@ -5,6 +5,7 @@ import { BattleScene } from './BattleScene';
 import { Controller } from './controller';
 import { Deploy } from './deploy';
 import { hud, mountRotate } from './hud';
+import { music } from './music';
 
 const POLL_MS = 1000;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -16,6 +17,7 @@ const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
   const { map, team } = first;
   const back = () => void api.pvpLeave(id).finally(() => location.reload());
+  music('battle');
   hud.setTeam(team);
   document.getElementById('hud')!.hidden = false;
 

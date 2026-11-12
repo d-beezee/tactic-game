@@ -23,8 +23,13 @@ export interface PvpState {
   reason: 'battle' | 'resign' | 'gone' | null;
 }
 
-/** A daily mission; done = already won today by this player. */
-export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; done: boolean }
+/** A daily mission; done = already won today by this player; trackId = its own music instead of the battle one. */
+export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; trackId: string | null; done: boolean }
+
+/** A piece of background music: Strudel code. */
+export interface Track { id: string; name: string; code: string }
+/** Saved tracks, and the one chosen for the menu and for battles (null = silence). */
+export interface Music { tracks: Track[]; menu: string | null; battle: string | null }
 
 export class ApiError extends Error {
   /** status 0 = the server could not be reached */
@@ -82,6 +87,11 @@ export const api = {
   pvpAction: (id: string, index: number, action: BattleAction) => call<unknown>('POST', `/pvp/${id}/actions`, { index, action }),
   pvpLeave: (id: string) => call<unknown>('POST', `/pvp/${id}/leave`),
   missions: () => call<Mission[]>('GET', '/missions'),
-  createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[] }) => call<Mission[]>('POST', '/admin/missions', m),
+  createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; trackId: string | null }) => call<Mission[]>('POST', '/admin/missions', m),
   deleteMission: (id: string) => call<Mission[]>('DELETE', `/admin/missions/${id}`),
+  music: () => call<Music>('GET', '/music'),
+  createTrack: (t: { name: string; code: string }) => call<Music>('POST', '/admin/tracks', t),
+  updateTrack: (id: string, t: { name: string; code: string }) => call<Music>('PUT', `/admin/tracks/${id}`, t),
+  deleteTrack: (id: string) => call<Music>('DELETE', `/admin/tracks/${id}`),
+  setMusicSlot: (slot: 'menu' | 'battle', trackId: string | null) => call<Music>('PUT', `/admin/music/${slot}`, { trackId }),
 };

@@ -88,6 +88,7 @@ apps/client/        client Vite + Phaser 3
   src/deploy.ts       schieramento con drag and drop
   src/editor.ts       editor mappe (admin)
   src/maps.ts         mappe di base e mappe salvate
+  src/music.ts        musica di sottofondo (codice Strudel)
   src/controller.ts   flusso dei turni e input del giocatore
   src/BattleScene.ts  rendering isometrico, unità, animazioni
   src/hud.ts          interfaccia sopra la mappa
@@ -144,7 +145,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 
 ## Missioni giornaliere
 
-- **Creazione:** dal menu "Gestisci missioni" l'admin crea una missione con nome, mappa (di base o salvata), oro (da 0 a 10000) e nemici, e può eliminarla. Una mappa usata da una missione non si può eliminare.
+- **Creazione:** dal menu "Gestisci missioni" l'admin crea una missione con nome, mappa (di base o salvata), oro (da 0 a 10000), nemici e, se vuole, una musica diversa da quella delle battaglie. Può anche eliminarla. Una mappa usata da una missione non si può eliminare.
 - **Nemici:** da 1 a 12, ognuno con classe (anche avanzata), livello da 1 a 8 e casella di partenza. Si piazzano toccando le caselle di una griglia della mappa. Una casella deve essere calpestabile e non può essere una partenza del giocatore. Alla scelta della mappa la griglia propone un nemico per ogni partenza nemica. Il numero di nemici non dipende da `maxDeploy`, che limita solo il giocatore.
 - **Gioco:** dal menu "Missioni giornaliere" ogni giocatore vede tutte le missioni. Una missione vinta paga XP e l'oro indicato, una volta al giorno per giocatore. Il giorno cambia a mezzanotte, ora italiana (`Europe/Rome`). Una missione persa si può rigiocare.
 - **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/testBattle.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
@@ -209,6 +210,14 @@ Il catalogo è in `packages/core/src/items.ts`.
 ```
 
 `validateMap()` in `packages/core/src/map.ts` controlla la mappa prima che venga usata. `parseMap()` fa lo stesso controllo sui JSON che arrivano da file o dallo storage.
+
+## Musiche
+
+- **Brani:** dal menu "Musiche" (solo admin) si incolla codice [Strudel](https://strudel.cc/) con un nome, si ascolta e si salva. Un brano salvato si può modificare o eliminare.
+- **Dove suonano:** l'admin sceglie un brano per il menu e uno per le battaglie (prova, campagna, PvP), oppure il silenzio. Una missione giornaliera può avere un brano suo. Se un brano viene eliminato, le missioni che lo usavano tornano alla musica delle battaglie.
+- **Riproduzione:** il client suona il codice con `@strudel/web`, caricato solo al primo brano. Campioni e drum machine si scaricano da `raw.githubusercontent.com/felixroos/dough-samples`, come nel REPL. L'interruttore Audio del menu spegne anche la musica.
+- **Sicurezza:** il codice Strudel è JavaScript ed è eseguito nel browser di ogni giocatore. Per questo solo un admin può salvarlo.
+- **Dati:** tabelle `tracks` (nome e codice, massimo 20000 caratteri) e `music_slots` (`menu`, `battle`), più `missions.track_id`. La migrazione crea i due brani iniziali.
 
 ## Editor mappe
 

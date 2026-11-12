@@ -80,6 +80,72 @@ const MIGRATIONS = [
      PRIMARY KEY (user_id, chapter_id)
    );
    ALTER TABLE battles ADD COLUMN chapter_id text;`,
+  // background music: Strudel code saved by the admin; a slot (menu, battle) names the track played there, a mission can override battle
+  `CREATE TABLE tracks (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     name text NOT NULL,
+     code text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE music_slots (
+     slot text PRIMARY KEY,
+     track_id uuid NOT NULL REFERENCES tracks(id) ON DELETE CASCADE
+   );
+   ALTER TABLE missions ADD COLUMN track_id uuid REFERENCES tracks(id) ON DELETE SET NULL;
+   WITH t AS (
+     INSERT INTO tracks (name, code) VALUES ('Rovine al tramonto', $track$setcpm(84/4)
+
+// lead: onda quadra con eco
+$: n("<[4 ~ 2 4 7 ~ 6 4] [5 ~ 4 2 4 ~ ~ ~] [2 ~ 4 6 7 ~ 6 4] [6 ~ 5 4 1 ~ ~ ~]>")
+  .scale("A4:minor")
+  .s("square").gain(.18)
+  .attack(.005).decay(.15).sustain(.5).release(.1)
+  .lpf(3500)
+  .delay(.35).delaytime(.357).delayfeedback(.35)
+
+// arpeggio: Am F C G a sedicesimi
+$: n("<[0,2,4] [5,7,9] [2,4,6] [6,8,10]>")
+  .arp("[0 1 2 1]*4")
+  .scale("A3:minor")
+  .s("square").gain(.08)
+  .decay(.08).sustain(0)
+  .lpf(2200)
+
+// basso: onda triangolare stile NES
+$: n("0 ~ 0 7 0 ~ 7 0".add("<0 5 2 6>"))
+  .scale("A1:minor")
+  .s("triangle").gain(.45)
+  .decay(.2).sustain(.3)
+
+// charleston leggero di rumore bianco
+$: s("[~ white]*4").gain(.07).decay(.03).sustain(0).hpf(6000)$track$), ('Lama e acciaio', $track$setcpm(152/4)
+
+// lead eroico
+$: note("<[e5 ~ b4 e5 g5 ~ f#5 e5] [g5 ~ e5 g5 c6 ~ b5 g5] [a5 ~ f#5 a5 d6 ~ a5 f#5] [d#5 ~ f#5 b5 a5 ~ f#5 d#5]>")
+  .s("square").gain(.17)
+  .attack(.003).decay(.1).sustain(.6).release(.05)
+  .lpf(4000)
+  .delay(.2).delaytime(.197).delayfeedback(.25)
+
+// arpeggio veloce: Em C D B
+$: note("<[e4,g4,b4] [c4,e4,g4] [d4,f#4,a4] [b3,d#4,f#4]>")
+  .arp("[0 1 2 1]*4")
+  .s("square").gain(.07)
+  .decay(.06).sustain(0)
+  .lpf(2500)
+
+// basso a ottave che martella
+$: note("[0 12]*4".add("<40 36 38 35>"))
+  .s("triangle").gain(.5)
+  .decay(.12).sustain(.2)
+
+// batteria compressa a 8 bit
+$: s("bd ~ bd [~ bd], ~ sd ~ sd, hh*8")
+  .bank("RolandTR909")
+  .crush(5).gain(.5)$track$)
+     RETURNING id, name
+   )
+   INSERT INTO music_slots SELECT CASE name WHEN 'Rovine al tramonto' THEN 'menu' ELSE 'battle' END, id FROM t;`,
 ];
 
 /**

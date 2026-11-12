@@ -1,4 +1,5 @@
 import { CLASSES, unitById, type BattleState, type Side, type Team, type Unit } from '@tactics/core';
+import { music } from './music';
 import { play, type Sound } from './sfx';
 import { reducedMotion } from './theme';
 
@@ -174,6 +175,7 @@ export const hud = {
     });
     r.replaceChildren(el('h1', '', win ? 'Vittoria' : 'Sconfitta'), list, button({ label, icon: win && label !== 'Torna al menu' ? 'confirm' : 'back', onClick: onRestart, primary: true }));
     r.hidden = false;
+    music(null);
     play(win ? 'win' : 'lose');
   },
 };
