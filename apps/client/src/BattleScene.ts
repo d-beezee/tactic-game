@@ -62,6 +62,7 @@ export class BattleScene extends Phaser.Scene {
   private dragged = false;
   private pinch = 0;
   private fit = { zoom: 1, minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  private follower: { el: HTMLElement; unitId: string } | null = null;
 
   constructor(
     private mapData: MapData,
@@ -255,6 +256,28 @@ export class BattleScene extends Phaser.Scene {
     // midPoint is only refreshed at render time, so derive the centre from scroll
     const cx = cam.scrollX + cam.width / 2, cy = cam.scrollY + cam.height / 2;
     cam.centerOn(Phaser.Math.Clamp(cx, f.minX, f.maxX), Phaser.Math.Clamp(cy, f.minY, f.maxY));
+  }
+
+  /** HTML element kept beside a unit on screen (the turn menu); null stops. */
+  follow(el: HTMLElement | null, unitId = '') {
+    this.follower = el && { el, unitId };
+    if (el) this.update();
+  }
+
+  update() {
+    const f = this.follower;
+    if (!f || f.el.hidden || !f.el.isConnected) return;
+    const s = this.sprites.get(f.unitId);
+    if (!s) return;
+    const cam = this.cameras.main;
+    // world to screen: Phaser zooms around the camera centre
+    const x = (s.c.x - cam.scrollX - cam.width / 2) * cam.zoom + cam.width / 2 + cam.x;
+    const y = (s.c.y - 24 - cam.scrollY - cam.height / 2) * cam.zoom + cam.height / 2 + cam.y;
+    const { offsetWidth: w, offsetHeight: h } = f.el, gap = 28 * Math.max(1, cam.zoom), pad = 12;
+    // right of the unit, left if it would leave the screen; vertically centred, kept below the banner and goal
+    const left = x + gap + w <= this.scale.width - pad ? x + gap : Math.max(pad, x - gap - w);
+    const top = Phaser.Math.Clamp(y - h / 2, 176, Math.max(176, this.scale.height - h - pad));
+    f.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
   }
 
   /** Bring a cell into view when zoomed in past the whole-map fit. */

@@ -133,6 +133,22 @@ svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: squar
 .btn-wrap { display: inline-flex; }
 .btn-wrap button:disabled { pointer-events: none; }
 #buttons button:disabled, #editor button:disabled, .class-pick button:disabled { background: rgba(18, 14, 11, .8); color: var(--dim); box-shadow: inset 0 0 0 1px #33281f; cursor: default; }
+/* turn menu: a titled list the scene keeps beside the active unit (BattleScene.follow) */
+#actions { position: absolute; left: 0; top: 0; z-index: 2; min-width: 220px; padding: 0 0 6px; background: var(--panel);
+  border-top: 2px solid var(--brass); box-shadow: inset 0 0 0 1px var(--line), 0 10px 30px rgba(0, 0, 0, .45); animation: menu-in 160ms ease-out both; }
+#actions[hidden] { display: none; }
+#actions h4 { margin: 0 0 4px; padding: 8px 16px 6px; font: 800 18px var(--ui); color: var(--brass); border-bottom: 1px solid var(--line); }
+#actions .btn-wrap { display: flex; }
+#actions button { flex: 1; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 0 16px;
+  border: 0; border-left: 3px solid transparent; background: none; color: var(--text); font: 700 18px var(--ui); text-align: left; cursor: pointer; }
+#actions button svg { width: 22px; height: 22px; }
+#actions button:not(:has(svg)) .lbl { grid-column: 2; }
+#actions button small { font: 500 13px var(--ui); color: var(--dim); }
+#actions button:not(:disabled):is(:hover, :focus-visible) { outline: 0; border-left-color: var(--brass); background: rgba(224, 172, 74, .14); }
+#actions button:not(:disabled):active { background: rgba(224, 172, 74, .24); }
+#actions button:disabled { color: var(--dim); cursor: default; opacity: .7; }
+#actions button.primary { color: var(--brass); }
+@keyframes menu-in { from { opacity: 0; } }
 #buttons .dirs { display: grid; grid-template-columns: repeat(2, 60px); gap: 10px; }
 #buttons .dirs button { min-width: 0; min-height: 52px; padding: 0; font: 24px var(--ui); }
 #buttons .dirs .btn-wrap { display: flex; }

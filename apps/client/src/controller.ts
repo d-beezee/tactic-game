@@ -145,13 +145,13 @@ export class Controller {
         },
       };
     });
-    hud.buttons([
-      ...this.resignButton(),
+    const list = hud.actions(u.name, [
       { label: 'Muovi', icon: 'move', hint: this.state.moved ? 'già fatto' : undefined, disabled: this.state.moved, onClick: () => this.move() },
       ...actions,
       { label: 'Direzione', icon: 'face', hint: 'facoltativa', onClick: () => this.face() },
       { label: 'Fine turno', icon: 'end', primary: true, onClick: () => void this.end(this.facing) },
-    ]);
+    ], this.resignButton());
+    this.scene.follow(list, u.id);
   }
 
   private move() {

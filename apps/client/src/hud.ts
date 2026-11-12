@@ -62,8 +62,8 @@ const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco 
 export const hud = {
   /** Empty and hidden, as before any battle. */
   reset() {
-    for (const id of ['timeline', 'banner', 'goal', 'ribbon', 'forecast', 'card', 'buttons', 'result', 'rotate']) $(id).replaceChildren();
-    for (const id of ['hud', 'goal', 'forecast', 'result', 'rotate']) $(id).hidden = true;
+    for (const id of ['timeline', 'banner', 'goal', 'ribbon', 'forecast', 'card', 'buttons', 'actions', 'result', 'rotate']) $(id).replaceChildren();
+    for (const id of ['hud', 'goal', 'forecast', 'actions', 'result', 'rotate']) $(id).hidden = true;
     $('ribbon').classList.remove('show');
     me = 'A';
     portraitOf = () => '';
@@ -170,8 +170,24 @@ export const hud = {
     box.hidden = false;
   },
 
+  /** Fixed row at the bottom right; also closes the action list. */
   buttons(list: (Btn | HTMLElement)[]) {
+    $('actions').hidden = true;
     $('buttons').replaceChildren(...list.map(b => (b instanceof HTMLElement ? b : button(b))));
+  },
+
+  /**
+   * Turn menu: a titled vertical list the scene keeps next to the unit, plus `fixed` in the bottom row.
+   * Phones get the plain bottom row: a list beside the unit would cover the map. Returns the list, or null on phones.
+   */
+  actions(title: string, list: Btn[], fixed: Btn[] = []): HTMLElement | null {
+    // shortcut: decided when the menu opens, a resize keeps the old layout until the next menu
+    if (matchMedia('(max-width: 640px)').matches) return this.buttons([...fixed, ...list]), null;
+    this.buttons(fixed);
+    const box = $('actions');
+    box.replaceChildren(el('h4', '', title), ...list.map(button));
+    box.hidden = false;
+    return box;
   },
 
   /** 2×2 grid of iso arrows, laid out like they appear on screen. */
