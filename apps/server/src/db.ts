@@ -72,6 +72,14 @@ const MIGRATIONS = [
    );
    CREATE INDEX pvp_matches_player_a ON pvp_matches (player_a);
    CREATE INDEX pvp_matches_player_b ON pvp_matches (player_b);`,
+  // campaign chapters won, by id from the core's CAMPAIGN; the row is the once-only payout check
+  `CREATE TABLE campaign_wins (
+     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     chapter_id text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, chapter_id)
+   );
+   ALTER TABLE battles ADD COLUMN chapter_id text;`,
 ];
 
 /**

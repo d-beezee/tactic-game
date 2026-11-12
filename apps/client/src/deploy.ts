@@ -25,6 +25,8 @@ export class Deploy {
     /** PvP: the second player deploys team B on the B spawns */
     private team: Team = 'A',
     private onBack: () => void = () => location.reload(),
+    /** roster ids that must fight: placed first and cannot leave the field */
+    private required: string[] = [],
   ) {}
 
   private get facing() { return this.team === 'A' ? 'S' : 'N'; }
@@ -32,6 +34,10 @@ export class Deploy {
   start() {
     this.scene.game.canvas.addEventListener('pointerdown', this.onCanvasDown);
     this.scene.focus(this.spawns[0]);
+    for (const id of this.required) {
+      const r = this.roster.find(x => x.id === id);
+      if (r) this.drop({ kind: 'tray', r }, this.spawns.find(s => !this.at(s)) ?? null);
+    }
     this.render();
   }
 
@@ -45,9 +51,11 @@ export class Deploy {
     this.scene.highlight(this.spawns, SPAWN);
     if (this.drag?.hover) this.scene.highlight([this.drag.hover], HOVER);
     const full = this.placed.length >= this.max;
-    hud.banner(full
+    const must = this.placed.filter(u => this.required.includes(u.id)).map(u => u.name);
+    hud.banner((full
       ? `Squadra al completo (${this.max}/${this.max}): trascina un'unità su una casella occupata per sostituirla`
-      : `Schieramento ${this.placed.length}/${this.max}: tocca o trascina un'unità sulle caselle azzurre`);
+      : `Schieramento ${this.placed.length}/${this.max}: tocca o trascina un'unità sulle caselle azzurre`)
+      + (must.length ? `. ${must.join(' e ')} combatte sempre` : ''));
 
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
       const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
@@ -127,6 +135,7 @@ export class Deploy {
       return;
     }
     if (!this.isSpawn(target)) return;
+    if (occupant && this.required.includes(occupant.id)) return;
     if (occupant) this.remove(occupant);                               // replace: occupant back to the tray
     else if (this.placed.length >= this.max) return; // full: the banner already shows N/N
     const u = unitFromRoster(src.r, this.team, target, this.facing);
@@ -142,6 +151,7 @@ export class Deploy {
   }
 
   private remove(u: Unit) {
+    if (this.required.includes(u.id)) return; // snaps back: it can only change cell
     this.placed = this.placed.filter(x => x !== u);
     this.scene.removeUnit(u.id);
   }

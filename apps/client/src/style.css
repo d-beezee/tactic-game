@@ -354,6 +354,90 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
   #buttons button { min-width: 70px; min-height: 56px; padding: 6px 10px; font-size: 15px; }
 }
 
+/* ---------- campaign ---------- */
+#goal { position: absolute; top: 138px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 5px 14px 5px 30px;
+  background: rgba(18, 14, 11, .85); border: 1px solid var(--brass-dk); border-radius: 999px; font: 700 16px var(--ui); color: #e6c98a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+/* brass diamond, same mark as the goal cells on the map */
+#goal::before { content: ''; position: absolute; left: 12px; top: 50%; width: 8px; height: 8px; background: var(--brass); transform: translateY(-50%) rotate(45deg); }
+#goal[hidden] { display: none; }
+@media (max-width: 640px) { #goal { top: 128px; font-size: 14px; white-space: normal; text-align: center; border-radius: 12px; } }
+
+/* prologue: the battle runs inside the brothers' beige monitor */
+#game.crt { border: clamp(14px, 3vw, 34px) solid #cfc4a8; border-bottom-width: clamp(28px, 6vw, 64px); border-radius: 18px;
+  background: radial-gradient(ellipse 80% 70% at 50% 45%, #18302f, #0b1515 75%); box-shadow: inset 0 0 0 3px #a89c80; }
+#game.crt::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: 10px;
+  background: repeating-linear-gradient(transparent 0 2px, rgba(0, 0, 0, .22) 2px 3px);
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, .7), inset 0 0 18px rgba(127, 211, 230, .25); }
+
+.chapters { display: grid; gap: 12px; max-width: 760px; }
+.chapter { display: grid; gap: 4px; justify-items: start; padding: 16px 20px 16px 22px; border: 0; border-left: 3px solid var(--line); text-align: left;
+  background: var(--panel); color: var(--text); box-shadow: var(--lift); transition: transform 120ms var(--ease-pop), background-color 120ms; }
+.chapter:not(:disabled):hover { background: #2b211a; transform: translateX(4px); }
+.chapter.next { border-left-color: var(--brass); background: radial-gradient(ellipse 60% 120% at 0% 50%, rgba(224, 172, 74, .14), transparent 70%), var(--panel); }
+.chapter.won { border-left-color: var(--mend); }
+.chapter:disabled { opacity: .55; cursor: default; }
+.ch-label { font: 700 15px var(--ui); color: var(--brass); text-transform: uppercase; letter-spacing: .08em; }
+.ch-title { font: 800 clamp(26px, 4vw, 34px)/1.05 var(--display); }
+.ch-blurb { color: var(--dim); }
+.ch-state { margin-top: 4px; font-weight: 700; color: #e6c98a; }
+.chapter.won .ch-state { color: var(--mend); }
+.chapter:disabled .ch-state { color: var(--dim); }
+
+/* cutscenes: drawn scene or map diorama, dialogue box at the bottom */
+.story { position: fixed; inset: 0; z-index: 50; background: #000; cursor: pointer; overflow: hidden; }
+.story-stage { position: absolute; inset: 0; transform-origin: 50% 42%; }
+.story-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.story-map { position: absolute; inset: 0;
+  background: radial-gradient(ellipse 70% 55% at 22% 0%, rgba(255, 143, 58, .16), transparent 70%), var(--night); }
+.story-stage:not([data-scene=bedroom]):not([data-scene=crt]) .story-canvas,
+.story-stage:not([data-scene=map]) .story-map { visibility: hidden; }
+.story-stage[data-scene=crt] .story-canvas { animation: crt-hum 3s ease-in-out infinite; }
+@keyframes crt-hum { 50% { filter: brightness(1.08); } }
+.story-box { position: absolute; left: 50%; bottom: max(20px, 4vh); transform: translateX(-50%); width: min(880px, calc(100% - 32px)); min-height: 132px;
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; column-gap: 18px; padding: 16px 24px 20px;
+  background: rgba(14, 11, 8, .93); border-top: 2px solid var(--brass); box-shadow: 0 12px 40px rgba(0, 0, 0, .6); cursor: pointer; }
+.story-portrait { grid-row: 1 / 3; width: 84px; height: 84px; align-self: center; image-rendering: pixelated; object-fit: cover; object-position: 50% 20%;
+  background: radial-gradient(circle at 50% 40%, #3a2c1c, #15110e); border: 2px solid var(--brass-dk); }
+.story-portrait[hidden] { display: none; }
+.story-who { font: 800 22px var(--display); color: var(--brass); min-height: 0; }
+.story-text { margin: 4px 0 0; font: 500 clamp(19px, 2.4vw, 23px)/1.4 var(--ui); color: var(--text); }
+.story-box.narration { grid-template-columns: 1fr; text-align: center; border-top-color: var(--line); }
+.story-box.narration .story-who { display: none; }
+.story-box.narration .story-text { font-style: italic; color: #e6d7b6; }
+.story-next { position: absolute; right: 18px; bottom: 10px; width: 10px; height: 10px; background: var(--brass); transform: rotate(45deg); animation: nudge 900ms ease-in-out infinite; }
+.story-next[hidden] { display: none; }
+@keyframes nudge { 50% { translate: 0 4px; } }
+.story-skip { position: absolute; top: 16px; right: 16px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 2px;
+  background: rgba(36, 27, 21, .85); color: var(--dim); font: 700 16px var(--ui); }
+.story-skip:hover { color: var(--text); }
+.story-flash { position: absolute; inset: 0; background: #fff8ea; opacity: 0; pointer-events: none; }
+.story-flash.flash { animation: flash 700ms ease-out both; }
+@keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+.story-stage.shake { animation: shake 500ms steps(10) both; }
+@keyframes shake { 20% { translate: -6px 3px; } 40% { translate: 5px -4px; } 60% { translate: -4px 2px; } 80% { translate: 3px -1px; } }
+/* torn horizontal bands and split colour, like a signal breaking up */
+.story-stage.glitch { animation: glitch 900ms steps(9) both; }
+@keyframes glitch {
+  0%, 100% { clip-path: none; filter: none; translate: 0; }
+  15% { clip-path: inset(10% 0 60% 0); translate: -14px 0; filter: hue-rotate(90deg) saturate(3); }
+  30% { clip-path: inset(55% 0 20% 0); translate: 18px 0; filter: invert(1); }
+  45% { clip-path: inset(30% 0 35% 0); translate: -8px 0; filter: hue-rotate(-60deg) contrast(2); }
+  60% { clip-path: inset(0 0 80% 0); translate: 10px 0; }
+  75% { clip-path: inset(70% 0 5% 0); translate: -20px 0; filter: saturate(4); }
+}
+/* pulled into the monitor: the screen swells, twists and burns white */
+.story-stage.suck { animation: suck 1500ms cubic-bezier(.6, 0, .9, .4) both; }
+@keyframes suck {
+  0% { transform: none; filter: none; }
+  40% { transform: scale(1.4) rotate(-2deg); filter: contrast(1.4) saturate(1.6); }
+  100% { transform: scale(7) rotate(8deg); filter: brightness(6) blur(6px); }
+}
+@media (max-width: 640px) {
+  .story-box { grid-template-columns: 1fr; padding: 14px 16px 18px; }
+  .story-portrait { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
 }

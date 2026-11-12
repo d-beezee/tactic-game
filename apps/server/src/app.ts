@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { activeUnit, apply, buyItem, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type MapData, type Player } from '@tactics/core';
+import { activeUnit, apply, buyItem, chapterById, chapterOpen, chapterUnits, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type MapData, type Player } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -170,26 +170,35 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   // XP and gold come from that replay, never from what the client says happened.
   app.post('/api/battles', async c => {
     const b = await body(c);
-    // a mission brings its own map; the map always comes from the server's copy, never from the client
-    let mapId = b.mapId, mission: { id: string; enemies: unknown } | null = null;
-    if (b.missionId !== undefined) {
-      const { rows: [m] } = isUuid(b.missionId) ? await pool.query('SELECT id, map_id, enemies FROM missions WHERE id = $1', [b.missionId]) : { rows: [] };
-      if (!m) throw new HttpError(404, 'Missione non trovata');
-      [mapId, mission] = [m.map_id, m];
-    }
-    const map = await findMap(mapId);
-    if (!map) throw new HttpError(404, 'Mappa non trovata');
     const userId = c.get('userId');
     const { rows: [user] } = await pool.query('SELECT roster FROM users WHERE id = $1', [userId]);
-    // checked again here: the map may have been edited since the mission was made
-    const units = deployTestBattle(user.roster, map, b.deploy, mission ? missionUnits(parseMissionEnemies(map, mission.enemies)) : undefined);
-    const missionId = mission?.id ?? null;
+    let map: MapData | undefined, units, missionId = null, chapterId = null;
+    if (b.chapterId !== undefined) {
+      // a campaign chapter: map, enemies and goal all come from the core's CAMPAIGN
+      const ch = chapterById(b.chapterId);
+      if (!ch) throw new HttpError(404, 'Capitolo non trovato');
+      if (!chapterOpen(await clearedChapters(userId), ch.id)) throw new HttpError(400, 'Capitolo ancora chiuso: vinci prima quello prima');
+      [map, units, chapterId] = [ch.map, chapterUnits(user.roster, ch, b.deploy), ch.id];
+    } else {
+      // a mission brings its own map; the map always comes from the server's copy, never from the client
+      let mapId = b.mapId, mission: { id: string; enemies: unknown } | null = null;
+      if (b.missionId !== undefined) {
+        const { rows: [m] } = isUuid(b.missionId) ? await pool.query('SELECT id, map_id, enemies FROM missions WHERE id = $1', [b.missionId]) : { rows: [] };
+        if (!m) throw new HttpError(404, 'Missione non trovata');
+        [mapId, mission] = [m.map_id, m];
+      }
+      map = await findMap(mapId);
+      if (!map) throw new HttpError(404, 'Mappa non trovata');
+      // checked again here: the map may have been edited since the mission was made
+      units = deployTestBattle(user.roster, map, b.deploy, mission ? missionUnits(parseMissionEnemies(map, mission.enemies)) : undefined);
+      missionId = mission?.id ?? null;
+    }
     const seed = randomBytes(4).readUInt32BE();
     return c.json(await tx(pool, async db => {
       // one battle at a time: starting a new one drops the old ones, finished or abandoned
       await db.query('DELETE FROM battles WHERE user_id = $1', [userId]);
-      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units, mission_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [userId, seed, JSON.stringify(map), JSON.stringify(units), missionId]);
+      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units, mission_id, chapter_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [userId, seed, JSON.stringify(map), JSON.stringify(units), missionId, chapterId]);
       return { id: rows[0].id, seed, units };
     }));
   });
@@ -199,12 +208,26 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const id = c.req.param('id'), userId = c.get('userId');
     if (!isUuid(id)) throw new HttpError(404, 'Battaglia non trovata');
     return c.json(await tx(pool, async db => {
-      const { rows: [battle] } = await db.query('SELECT seed, map, units, result, mission_id FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
+      const { rows: [battle] } = await db.query('SELECT seed, map, units, result, mission_id, chapter_id FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
       if (!battle) throw new HttpError(404, 'Battaglia non trovata: ne hai iniziata un\'altra?');
       // a retry after a lost response gets the same answer and no second payout
       if (battle.result) return battle.result;
-      const end = replayTestBattle(battle.map, battle.units, Number(battle.seed), actions);
+      const ch = battle.chapter_id ? chapterById(battle.chapter_id) : undefined;
+      const end = replayTestBattle(battle.map, battle.units, Number(battle.seed), actions, ch?.goal, ch?.required);
       const won = end.winner === 'A';
+      if (ch) {
+        // a chapter pays and unlocks its unit on the first win only; the insert is the check
+        const { rowCount } = won ? await db.query('INSERT INTO campaign_wins (user_id, chapter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, ch.id]) : { rowCount: 0 };
+        const out = rowCount
+          ? { ...await mutateIn(db, userId, p => {
+              const r = payBattle(p, battle.units, end, ch.gold);
+              const unlock = ch.unlock && !r.player.roster.some(u => u.id === ch.unlock!.id) ? ch.unlock : undefined;
+              return { ...r, player: unlock ? { ...r.player, roster: [...r.player.roster, unlock] } : r.player, unlocked: unlock?.name ?? null };
+            }), won, paid: true }
+          : { report: [], gold: 0, won, paid: false, unlocked: null };
+        await db.query('UPDATE battles SET result = $2 WHERE id = $1', [id, JSON.stringify(out)]);
+        return out;
+      }
       // only a mission won for the first time today pays; the insert is the once-a-day check
       const { rows: [paid] } = won && battle.mission_id ? await db.query(
         `INSERT INTO mission_wins (user_id, mission_id, day) SELECT $1, id, ${TODAY} FROM missions WHERE id = $2
@@ -229,6 +252,11 @@ export function createApp(pool: pg.Pool, staticDir: string) {
      FROM missions m ORDER BY m.created_at, m.id`, [userId])).rows;
 
   app.get('/api/missions', async c => c.json(await listMissions(c.get('userId'))));
+
+  const clearedChapters = async (userId: string): Promise<string[]> =>
+    (await pool.query('SELECT chapter_id FROM campaign_wins WHERE user_id = $1', [userId])).rows.map(r => r.chapter_id);
+
+  app.get('/api/campaign', async c => c.json({ cleared: await clearedChapters(c.get('userId')) }));
 
   const listMaps = async () => (await pool.query("SELECT data FROM maps ORDER BY data->>'name', id")).rows.map(r => r.data as MapData);
 

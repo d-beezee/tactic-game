@@ -65,12 +65,14 @@ export const api = {
   updateUnit: (id: string, change: UnitChange) => call<Player>('PATCH', `/units/${encodeURIComponent(id)}`, change),
   buy: (itemId: string) => call<Player>('POST', '/shop/buy', { itemId }),
   /** The server picks the seed and builds the starting units from its own copy of the roster. */
-  /** A test battle names its map, a mission its id. */
-  battleStart: (target: { mapId: string } | { missionId: string }, deploy: { id: string; pos: Pos }[]) =>
+  /** A test battle names its map, a mission or a campaign chapter its id. */
+  battleStart: (target: { mapId: string } | { missionId: string } | { chapterId: string }, deploy: { id: string; pos: Pos }[]) =>
     call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { ...target, deploy }),
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
-    call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean }>('POST', `/battles/${id}/finish`, { actions }),
+    call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean; unlocked?: string | null }>('POST', `/battles/${id}/finish`, { actions }),
+  /** ids of the campaign chapters this player has won */
+  campaign: () => call<{ cleared: string[] }>('GET', '/campaign'),
   pvpQueue: () => call<{ id: string }>('POST', '/pvp/queue'),
   pvpRoom: () => call<{ id: string }>('POST', '/pvp/rooms'),
   pvpJoin: (code: string) => call<{ id: string }>('POST', '/pvp/join', { code }),

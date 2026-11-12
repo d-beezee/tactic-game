@@ -298,3 +298,73 @@ describe('test battle on the server', () => {
     expect(() => replayTestBattle(map, units, 7, 'win')).toThrow(PlayerError);
   });
 });
+
+import { CAMPAIGN, chapterOpen, chapterUnits } from '../src';
+describe('battle goals', () => {
+  const at = (id: string, team: 'A' | 'B', classId: string, x: number, hp?: number) => {
+    const u = createUnit(id, id, team, classId, { x, y: 0 }, 'E');
+    return hp ? { ...u, hp } : u;
+  };
+
+  it('survive: A wins when the given round is over', () => {
+    let s = createBattle(flat(9, 4), [at('a', 'A', 'warrior', 0), at('b', 'B', 'warrior', 8)], 1, { type: 'survive', rounds: 1 });
+    s = apply(s, { type: 'end', facing: 'E' });
+    expect(s.winner).toBeNull();
+    s = apply(s, { type: 'end', facing: 'E' });
+    expect(s.winner).toBe('A');
+  });
+
+  it('reach: A wins when a unit stops on a goal cell', () => {
+    const s = createBattle(flat(5, 4), [at('a', 'A', 'archer', 0), at('b', 'B', 'cleric', 4)], 1, { type: 'reach', cells: [{ x: 3, y: 0 }] });
+    expect(activeUnit(s).id).toBe('a');
+    expect(apply(s, { type: 'move', to: { x: 3, y: 0 } }).winner).toBe('A');
+  });
+
+  it('boss: downing the boss wins even with other enemies up', () => {
+    const s = createBattle(flat(6, 4), [at('a', 'A', 'archer', 0), at('boss', 'B', 'warrior', 2, 1), at('b', 'B', 'warrior', 5)], 1, { type: 'boss', unitId: 'boss' });
+    expect(apply(s, { type: 'act', actionId: 'shoot', target: { x: 2, y: 0 } }).winner).toBe('A');
+  });
+
+  const two: MapData = { ...flat(6, 4), maxDeploy: 2, spawns: { A: [{ x: 0, y: 1 }, { x: 1, y: 1 }], B: [{ x: 5, y: 3 }, { x: 4, y: 3 }] } };
+  it('protect: losing a protected unit loses the battle', () => {
+    const s = createBattle(two, [at('kid', 'A', 'warrior', 0, 1), at('a', 'A', 'warrior', 5), at('b', 'B', 'archer', 2)], 1, { type: 'rout' }, ['kid']);
+    expect(apply(s, { type: 'act', actionId: 'shoot', target: { x: 0, y: 0 } }).winner).toBe('B');
+  });
+
+  it('rejects goals that do not fit the battle', () => {
+    const units = [at('a', 'A', 'warrior', 0), at('b', 'B', 'warrior', 3)];
+    expect(() => createBattle(flat(4, 4), units, 1, { type: 'boss', unitId: 'a' })).toThrow(BattleError);
+    expect(() => createBattle(flat(4, 4), units, 1, { type: 'survive', rounds: 0 })).toThrow(BattleError);
+    expect(() => createBattle(flat(4, 4), units, 1, { type: 'reach', cells: [{ x: 9, y: 0 }] })).toThrow(BattleError);
+    expect(() => createBattle(flat(4, 4), units, 1, { type: 'rout' }, ['b'])).toThrow(BattleError);
+  });
+});
+
+describe('campaign', () => {
+  const unlocks = CAMPAIGN.flatMap(c => (c.unlock ? [c.unlock] : []));
+  const roster = [...newPlayer().roster, ...unlocks];
+
+  it('every chapter is playable with the units unlocked before it', () => {
+    expect(new Set(CAMPAIGN.map(c => c.id)).size).toBe(CAMPAIGN.length);
+    expect(parseRoster(roster)).toHaveLength(roster.length); // unlocked units are valid roster units
+    expect(new Set(roster.map(r => r.id)).size).toBe(roster.length);
+    CAMPAIGN.forEach((ch, i) => {
+      expect(validateMap(ch.map), ch.id).toEqual([]);
+      parseMissionEnemies(ch.map, ch.enemies);
+      const owned = [...newPlayer().roster, ...unlocks.slice(0, i)];
+      for (const id of ch.required) expect(owned.some(r => r.id === id), `${ch.id} needs ${id}`).toBe(true);
+      const team = [...ch.required, ...owned.map(r => r.id).filter(id => !ch.required.includes(id))].slice(0, ch.map.maxDeploy);
+      const units = chapterUnits(owned, ch, team.map((id, j) => ({ id, pos: ch.map.spawns.A[j] })));
+      expect(units.filter(u => u.team === 'B')).toHaveLength(ch.enemies.length);
+    });
+  });
+
+  it('required units must be deployed, chapters open in order', () => {
+    const ch = CAMPAIGN[1];
+    expect(() => chapterUnits(roster, ch, [{ id: 'r1', pos: ch.map.spawns.A[0] }])).toThrow(PlayerError);
+    expect(chapterOpen([], CAMPAIGN[0].id)).toBe(true);
+    expect(chapterOpen([], ch.id)).toBe(false);
+    expect(chapterOpen([CAMPAIGN[0].id], ch.id)).toBe(true);
+    expect(chapterOpen([CAMPAIGN[0].id], 'nope')).toBe(false);
+  });
+});

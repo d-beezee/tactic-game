@@ -7,12 +7,13 @@ Gioco strategico a turni su griglia isometrica a più livelli di altezza. Si gio
 - un menu iniziale;
 - una caserma dove vedi il roster, cambi classe alle unità e le equipaggi;
 - un negozio dove compri armi e armature con l'oro;
-- missioni giornaliere create dall'admin: le uniche battaglie che danno XP e oro;
+- una campagna a capitoli con cutscene e obiettivi diversi: ogni capitolo dà XP e oro alla prima vittoria e sblocca un alleato;
+- missioni giornaliere create dall'admin: danno XP e oro una volta al giorno;
 - PvP contro altri giocatori: coda in lobby o stanza privata con codice;
 - una battaglia di prova contro l'IA, su una mappa a scelta, con schieramento iniziale tramite drag and drop, che non dà ricompense;
 - un editor di mappe.
 
-La campagna a capitoli non c'è ancora.
+La campagna ha il prologo e 3 capitoli. La battaglia finale manca ancora.
 
 ## Avvio
 
@@ -148,6 +149,21 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 - **Gioco:** dal menu "Missioni giornaliere" ogni giocatore vede tutte le missioni. Una missione vinta paga XP e l'oro indicato, una volta al giorno per giocatore. Il giorno cambia a mezzanotte, ora italiana (`Europe/Rome`). Una missione persa si può rigiocare.
 - **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/testBattle.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
 
+## Campagna
+
+- **Storia:** "Cronache di Valdombra". Due fratelli, Teo e Nico, giocano a turno a un gioco per un solo giocatore in una cameretta del 1996, e vengono risucchiati dentro. Teo combatte con il roster; Nico diventa il boss finale.
+- **Capitoli:** dati, mappe, nemici, obiettivi e dialoghi stanno in `packages/core/src/campaign.ts`, le mappe in `packages/core/src/campaign/*.json`. Client e server leggono gli stessi file. Un capitolo si apre quando il precedente è vinto.
+- **Obiettivi** (`Goal` in `battle.ts`):
+  - `rout`: sconfiggi tutti;
+  - `survive`: resisti fino alla fine di un round;
+  - `reach`: porta un'unità su una delle caselle d'oro;
+  - `boss`: sconfiggi un nemico preciso, gli altri possono restare in piedi.
+  Inoltre `protect` elenca le unità che non devono cadere: se ne cade una, la battaglia è persa. Sconfiggere tutti i nemici vince sempre.
+- **Unità obbligatorie:** dal capitolo 1 Teo deve essere schierato e non deve cadere. Nello schieramento è già piazzato e si può solo spostare.
+- **Ricompense:** la prima vittoria di un capitolo paga XP e oro e aggiunge al roster l'unità sbloccata (tabella `campaign_wins`). Rigiocarlo non dà nulla.
+- **Cutscene:** la cameretta e il monitor sono disegnati con codice su un canvas 320×180 (`apps/client/src/scenes.ts`). Le scene nel mondo del gioco usano la mappa del capitolo, che scorre lentamente. Gli effetti (lampo, glitch, risucchio, flash) sono CSS, e i suoni sono sintetizzati. "Salta" o Esc chiude la scena.
+- **Prologo:** si gioca dentro la cornice del monitor. Il nastro alterna "Tocca a Teo" e "Tocca a Nico" a ogni unità del giocatore.
+
 ## PvP
 
 - **Entrare:** dal menu "PvP". "Cerca un avversario" mette in coda: se c'è già qualcuno in coda, la partita parte subito, altrimenti si aspetta il prossimo. "Crea una stanza per un amico" dà un codice di 6 caratteri da condividere; l'amico lo scrive in "Entra con il codice". Un codice vale finché la stanza non è piena.
@@ -222,4 +238,4 @@ Dal menu, "Editor mappe". La voce compare solo all'admin.
 
 ## Roadmap
 
-1. Campagna a capitoli.
+1. Campagna: la battaglia finale contro Nico, e il ritorno nella cameretta.

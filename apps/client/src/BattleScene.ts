@@ -41,6 +41,8 @@ export class BattleScene extends Phaser.Scene {
   private rot = 0;
   private units = new Map<string, Unit>();
   private lit: { cells: Pos[]; color: number; alpha: number }[] = [];
+  /** cells a battle goal asks to reach: always lit, under every other highlight */
+  private goalCells: Pos[] = [];
   private cursor!: Phaser.GameObjects.Graphics;
   private path!: Phaser.GameObjects.Graphics;
   private hovered: string | null = null;
@@ -268,6 +270,7 @@ export class BattleScene extends Phaser.Scene {
     this.lit = [];
     this.mapData = m;
     for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) this.drawCell({ x, y });
+    this.paint(this.goalCells, COLOR.brass, 0.5);
     this.fitCamera();
   }
 
@@ -435,6 +438,10 @@ export class BattleScene extends Phaser.Scene {
 
   highlight(cells: Pos[], color: number, alpha = 0.45) {
     this.lit.push({ cells, color, alpha });
+    this.paint(cells, color, alpha);
+  }
+
+  private paint(cells: Pos[], color: number, alpha: number) {
     for (const p of cells) {
       const c = this.at(p);
       const pts = [{ x: c.x, y: c.y - TH / 2 + 3 }, { x: c.x + TW / 2 - 5, y: c.y }, { x: c.x, y: c.y + TH / 2 - 3 }, { x: c.x - TW / 2 + 5, y: c.y }];
@@ -445,6 +452,23 @@ export class BattleScene extends Phaser.Scene {
   clearHighlights() {
     for (const g of this.overlays.values()) g.clear();
     this.lit = [];
+    this.paint(this.goalCells, COLOR.brass, 0.5);
+  }
+
+  /** Battle goal "reach these cells": they stay lit in brass for the whole battle. */
+  markGoal(cells: Pos[]) {
+    this.goalCells = cells;
+    this.clearHighlights();
+  }
+
+  /** A brass crown over a unit's HP bar: the enemy to bring down. */
+  markBoss(unitId: string) {
+    const s = this.sprites.get(unitId);
+    if (!s) return;
+    const crown = [-8, -72, -8, -80, -4, -76, 0, -82, 4, -76, 8, -80, 8, -72];
+    const pts = [];
+    for (let i = 0; i < crown.length; i += 2) pts.push({ x: crown[i], y: crown[i + 1] });
+    s.c.add(this.add.graphics().fillStyle(COLOR.brass).lineStyle(1.5, COLOR.night).fillPoints(pts, true).strokePoints(pts, true));
   }
 
   /** Planned route: a line through the cell centres with an arrowhead on the last one. */

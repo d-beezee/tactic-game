@@ -1,6 +1,6 @@
 import {
   CLASSES, activeUnit, apply, rangeCells, destinations, expectedAmount, facingToward, heightAt, key, pathTo, planTurn, reachable, samePos, sideOf, targetsFor,
-  type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team,
+  unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
@@ -8,6 +8,17 @@ import { COLOR } from './theme';
 
 const actionColor = (a: ActionDef) => (a.effect === 'heal' ? COLOR.mend : COLOR.strike);
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** The goal of team A, in words, with the units that must not fall. */
+export function goalText(s: BattleState): string {
+  const g = s.goal;
+  const text = g.type === 'survive' ? `Resisti fino alla fine del round ${g.rounds} (ora ${Math.min(s.round, g.rounds)}/${g.rounds})`
+    : g.type === 'reach' ? 'Porta un\'unità sulle caselle d\'oro'
+    : g.type === 'boss' ? `Sconfiggi ${unitById(s, g.unitId).name}`
+    : 'Sconfiggi tutti i nemici';
+  const keep = s.protect.map(id => unitById(s, id).name);
+  return keep.length ? `${text}. ${keep.join(' e ')} non deve cadere` : text;
+}
 
 type Mode =
   | { k: 'busy' }
@@ -36,7 +47,13 @@ export class Controller {
    */
   constructor(
     private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>,
-    private opts: { me?: Team; remote?: () => Promise<BattleAction>; onAction?: (a: BattleAction) => void; onResign?: () => void } = {},
+    private opts: {
+      me?: Team; remote?: () => Promise<BattleAction>; onAction?: (a: BattleAction) => void; onResign?: () => void;
+      /** ribbon text for one of our turns (prologue: the brothers take turns) */
+      turnLabel?: (u: Unit) => string;
+      /** after the result screen; default back to the menu */
+      onDone?: { label: string; run: (win: boolean) => void };
+    } = {},
   ) {
     this.me = opts.me ?? 'A';
     scene.events.on('cell', (p: Pos) => void this.onCell(p));
@@ -76,14 +93,20 @@ export class Controller {
       hud.buttons([]);
       hud.banner('Salvataggio…');
       const win = this.state.winner === this.me;
-      // reload = back to menu
-      return void this.onEnd(this.log).then(lines => { hud.banner(''); hud.result(win, lines, () => location.reload()); });
+      hud.goal(null);
+      const done = this.opts.onDone;
+      // default: reload = back to menu
+      return void this.onEnd(this.log).then(lines => {
+        hud.banner('');
+        hud.result(win, lines, done ? () => done.run(win) : () => location.reload(), done?.label);
+      });
     }
     this.scene.setActive(u.id);
     this.scene.focus(u.pos);
     this.facing = u.facing;
     hud.card(u);
-    hud.ribbon(u.team === this.me ? `Turno di ${u.name}` : `Turno nemico: ${u.name}`);
+    hud.goal(goalText(this.state));
+    hud.ribbon(u.team === this.me ? this.opts.turnLabel?.(u) ?? `Turno di ${u.name}` : `Turno nemico: ${u.name}`);
     if (u.team === this.me) this.menu();
     else void (this.opts.remote ? this.runRemote() : this.runAi());
   }

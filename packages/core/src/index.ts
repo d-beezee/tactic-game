@@ -11,3 +11,4 @@ export * from './roster';
 export * from './items';
 export * from './player';
 export * from './testBattle';
+export * from './campaign';

@@ -49,6 +49,13 @@ const SOUNDS = {
   win: () => [523, 659, 784, 659, 1047].forEach((f, i) => tone({ f, dur: i === 4 ? 0.5 : 0.14, vol: 0.08, at: i * 0.12 })),
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, to: f * 0.97, dur: i === 2 ? 0.6 : 0.22, vol: 0.08, type: 'triangle', at: i * 0.2 })),
   level: () => [784, 988, 1175, 1568].forEach((f, i) => tone({ f, dur: 0.12, vol: 0.06, type: 'square', at: i * 0.05 })),
+  // cutscenes
+  blip: () => tone({ f: 660 + Math.random() * 120, dur: 0.03, vol: 0.025, type: 'square' }),
+  thunder: () => { noise({ dur: 1.4, vol: 0.6, freq: 260 }); noise({ dur: 0.25, vol: 0.4, freq: 3000 }); },
+  glitch: () => { for (let i = 0; i < 6; i++) tone({ f: 200 + Math.random() * 2400, dur: 0.05, vol: 0.05, type: 'square', at: i * 0.06 }); noise({ dur: 0.35, vol: 0.2, freq: 5000 }); },
+  // the dead modem screeching, then the pull into the screen
+  suck: () => { tone({ f: 1200, to: 2400, dur: 0.5, vol: 0.05, type: 'sawtooth' }); tone({ f: 80, to: 1800, dur: 1.3, vol: 0.12, type: 'sawtooth', at: 0.3 }); noise({ dur: 1.4, vol: 0.35, freq: 1500, at: 0.3 }); },
+  flash: () => tone({ f: 2093, to: 1046, dur: 0.6, vol: 0.06, type: 'triangle' }),
 };
 export type Sound = keyof typeof SOUNDS;
 

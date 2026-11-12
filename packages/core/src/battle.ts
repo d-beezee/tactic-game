@@ -18,8 +18,21 @@ export type BattleEvent =
   | { type: 'heal'; unitId: string; amount: number }
   | { type: 'ko'; unitId: string };
 
+/**
+ * What team A must do to win. Team B (the AI, or the other player) always wins by downing all of A, or one of `protect`.
+ * Downing all of B wins for A whatever the goal.
+ */
+export type Goal =
+  | { type: 'rout' }
+  | { type: 'survive'; rounds: number }
+  | { type: 'reach'; cells: Pos[] }
+  | { type: 'boss'; unitId: string };
+
 export interface BattleState {
   map: MapData;
+  goal: Goal;
+  /** team A unit ids whose fall loses the battle */
+  protect: string[];
   units: Unit[];
   /** unit ids, fixed for the whole battle */
   order: string[];
@@ -39,7 +52,7 @@ export const XP_ACTION = 10, XP_KILL = 20, XP_VICTORY = 20;
 
 export class BattleError extends Error {}
 
-export function createBattle(map: MapData, units: Unit[], seed: number): BattleState {
+export function createBattle(map: MapData, units: Unit[], seed: number, goal: Goal = { type: 'rout' }, protect: string[] = []): BattleState {
   const errors = validateMap(map);
   if (errors.length) throw new BattleError(`invalid map: ${errors.join('; ')}`);
   const cells = new Set<string>();
@@ -51,9 +64,13 @@ export function createBattle(map: MapData, units: Unit[], seed: number): BattleS
   const n = (team: string) => units.filter(u => u.team === team).length;
   if (n('A') === 0 || n('A') > map.maxDeploy) throw new BattleError(`team A must deploy 1..${map.maxDeploy} units`);
   if (n('B') === 0) throw new BattleError('team B has no units');
+  if (goal.type === 'survive' && !(Number.isInteger(goal.rounds) && goal.rounds >= 1)) throw new BattleError('bad survive goal');
+  if (goal.type === 'reach' && !(goal.cells.length && goal.cells.every(p => isWalkable(map, p)))) throw new BattleError('bad reach goal');
+  if (goal.type === 'boss' && !units.some(u => u.id === goal.unitId && u.team === 'B')) throw new BattleError('bad boss goal');
+  if (protect.some(id => !units.some(u => u.id === id && u.team === 'A'))) throw new BattleError('protected unit not deployed');
   const init = rollInitiative(units, seed);
   const xp = Object.fromEntries(units.map(u => [u.id, 0]));
-  return { map, units, order: init.order, turn: 0, round: 1, moved: false, acted: false, seed: init.seed, winner: null, events: [], xp };
+  return { map, goal, protect, units, order: init.order, turn: 0, round: 1, moved: false, acted: false, seed: init.seed, winner: null, events: [], xp };
 }
 
 export const unitById = (s: BattleState, id: string) => s.units.find(u => u.id === id)!;
@@ -83,6 +100,7 @@ export function apply(prev: BattleState, action: BattleAction): BattleState {
       u.pos = { x: to.x, y: to.y };
       s.moved = true;
       s.events.push({ type: 'move', unitId: u.id, path });
+      settle(s);
       break;
     }
     case 'act': {
@@ -110,14 +128,14 @@ export function apply(prev: BattleState, action: BattleAction): BattleState {
       s.xp[u.id] += XP_ACTION;
       if (target !== u) u.facing = facingToward(u.pos, target.pos);
       s.acted = true;
-      s.winner = checkWinner(s.units);
-      if (s.winner) for (const w of s.units) if (w.team === s.winner && w.hp > 0) s.xp[w.id] += XP_VICTORY;
+      settle(s);
       break;
     }
     case 'end': {
       if (!Object.hasOwn(DIRS, action.facing)) throw new BattleError('invalid facing');
       u.facing = action.facing;
       advance(s);
+      settle(s);
       break;
     }
     default:
@@ -126,9 +144,22 @@ export function apply(prev: BattleState, action: BattleAction): BattleState {
   return s;
 }
 
-function checkWinner(units: Unit[]): Team | null {
-  const alive = new Set(units.filter(u => u.hp > 0).map(u => u.team));
-  return alive.size === 1 ? [...alive][0] : null;
+export function checkWinner(s: BattleState): Team | null {
+  const up = (u: Unit) => u.hp > 0;
+  const a = s.units.filter(u => u.team === 'A'), b = s.units.filter(u => u.team === 'B');
+  if (!a.some(up) || s.protect.some(id => !up(unitById(s, id)))) return 'B';
+  if (!b.some(up)) return 'A';
+  const g = s.goal;
+  if (g.type === 'boss' && !up(unitById(s, g.unitId))) return 'A';
+  if (g.type === 'reach' && a.some(u => up(u) && g.cells.some(c => samePos(c, u.pos)))) return 'A';
+  if (g.type === 'survive' && s.round > g.rounds) return 'A';
+  return null;
+}
+
+/** Sets the winner, if any, and gives the victory XP. */
+function settle(s: BattleState) {
+  s.winner = checkWinner(s);
+  if (s.winner) for (const w of s.units) if (w.team === s.winner && w.hp > 0) s.xp[w.id] += XP_VICTORY;
 }
 
 function advance(s: BattleState) {

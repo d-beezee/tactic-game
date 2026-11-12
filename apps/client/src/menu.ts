@@ -1,6 +1,6 @@
 import {
-  CLASSES, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
-  unlockedPassives, xpToReach, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
+  CAMPAIGN, CLASSES, chapterOpen, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
+  unlockedPassives, xpToReach, type Chapter, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account, type Mission, type PvpState, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
@@ -50,6 +50,9 @@ async function backdrop(roster: RosterUnit[]) {
     console.error(e); // no WebGL or canvas: the menu works without the scene
   }
 }
+/** Set before a reload to land on a menu screen instead of the main one. */
+export const AFTER_KEY = 'tactics.after';
+
 const leaveMenu = () => {
   backdropGen++;
   stopBackdrop?.();
@@ -71,6 +74,7 @@ const enemySummary = (enemies: MissionEnemy[]) => {
 export function showMenu(go: {
   testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void;
   pvp: (roster: RosterUnit[], id: string, state: PvpState) => void;
+  campaign: (roster: RosterUnit[], chapter: Chapter) => void;
   editor: () => void;
 }) {
   const root = document.getElementById('menu')!;
@@ -90,6 +94,11 @@ export function showMenu(go: {
     error = '';
     void backdrop(player.roster);
     main();
+    // back from a chapter: straight to the chapter list
+    try {
+      if (sessionStorage.getItem(AFTER_KEY) === 'campaign') void campaign();
+      sessionStorage.removeItem(AFTER_KEY);
+    } catch { /* storage blocked: stay on the main menu */ }
   };
 
   /** Sends a change to the server, then redraws the screen with the new state or with the error. */
@@ -163,7 +172,8 @@ export function showMenu(go: {
         el('p', { className: 'account' }, `${player.email}, `, el('b', { textContent: `${player.gold} oro` })),
         el('button', { className: 'menu-btn', textContent: 'Caserma', onclick: barracks }),
         el('button', { className: 'menu-btn', textContent: 'Negozio', onclick: shop }),
-        el('button', { className: 'menu-btn primary', textContent: 'Missioni giornaliere', onclick: () => void missions() }),
+        el('button', { className: 'menu-btn primary', textContent: 'Campagna', onclick: () => void campaign() }),
+        el('button', { className: 'menu-btn', textContent: 'Missioni giornaliere', onclick: () => void missions() }),
         el('button', { className: 'menu-btn', textContent: 'PvP', onclick: () => pvp() }),
         el('button', { className: 'menu-btn', textContent: 'Battaglia di prova', onclick: () => void pickMap() }),
         ...(player.admin ? [
@@ -275,6 +285,46 @@ export function showMenu(go: {
       }
       await new Promise(r => setTimeout(r, 1000));
     }
+  };
+
+  /** The story, chapter by chapter: each opens when the one before is won, and pays once. */
+  const campaign = async () => {
+    let cleared: string[];
+    try {
+      ({ cleared } = await api.campaign());
+      error = '';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = (e as Error).message;
+      cleared = [];
+    }
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: 'Cronache di Valdombra' }),
+        ),
+        errorLine(),
+        el('div', { className: 'chapters' },
+          ...CAMPAIGN.map((ch, i) => {
+            const won = cleared.includes(ch.id), open = chapterOpen(cleared, ch.id);
+            const state = won ? 'Vinto · rigioca quando vuoi, senza ricompensa'
+              : open ? `+${ch.gold} oro e XP alla prima vittoria${ch.unlock ? ' · un nuovo alleato' : ''}`
+              : `Vinci prima «${CAMPAIGN[i - 1].title}»`;
+            return el('button', {
+              className: `chapter${won ? ' won' : open ? ' next' : ''}`, disabled: !open,
+              onclick: () => { play('select'); leaveMenu(); go.campaign(player.roster, ch); },
+            },
+              el('span', { className: 'ch-label', textContent: ch.label }),
+              el('span', { className: 'ch-title', textContent: ch.title }),
+              el('span', { className: 'ch-blurb', textContent: ch.blurb }),
+              el('span', { className: 'ch-state', textContent: state }),
+            );
+          }),
+          el('p', { className: 'hint wide', textContent: 'Continua… I prossimi capitoli sono in lavorazione.' }),
+        ),
+      ),
+    );
   };
 
   /** Today's daily missions: each pays XP and gold once a day, on a win. */

@@ -105,6 +105,13 @@ export const hud = {
     c.replaceChildren(head, bar, hpRow, grid);
   },
 
+  /** The battle goal, under the banner; null hides it. */
+  goal(text: string | null) {
+    const g = $('goal');
+    g.textContent = text ?? '';
+    g.hidden = !text;
+  },
+
   banner(text: string) {
     $('banner').textContent = text;
   },
@@ -154,7 +161,7 @@ export const hud = {
   },
 
   /** End screen: the title lands, then each report line appears in turn; level-ups get their own sound. */
-  result(win: boolean, lines: string[], onRestart: () => void) {
+  result(win: boolean, lines: string[], onRestart: () => void, label = 'Torna al menu') {
     const r = $('result');
     r.className = win ? 'win' : 'lose';
     const list = el('ul', 'xp-report');
@@ -165,7 +172,7 @@ export const hud = {
       list.append(li);
       if (/livello/i.test(l)) setTimeout(() => play('level'), 600 + i * step);
     });
-    r.replaceChildren(el('h1', '', win ? 'Vittoria' : 'Sconfitta'), list, button({ label: 'Torna al menu', icon: 'back', onClick: onRestart, primary: true }));
+    r.replaceChildren(el('h1', '', win ? 'Vittoria' : 'Sconfitta'), list, button({ label, icon: win && label !== 'Torna al menu' ? 'confirm' : 'back', onClick: onRestart, primary: true }));
     r.hidden = false;
     play(win ? 'win' : 'lose');
   },
@@ -184,7 +191,7 @@ export function mountRotate(scene: { rotate(steps: 1 | -1): void }) {
   });
   box.hidden = false;
   window.addEventListener('keydown', e => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.repeat) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.repeat || box.hidden) return;
     if (e.key === 'q' || e.key === 'Q') scene.rotate(-1);
     if (e.key === 'e' || e.key === 'E') scene.rotate(1);
   });
