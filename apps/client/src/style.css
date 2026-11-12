@@ -442,3 +442,50 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
 }
 .mission-form textarea.code { flex: 1 1 100%; min-height: 260px; padding: 12px 14px; font: 14px/1.5 ui-monospace, monospace; resize: vertical; white-space: pre; }
+
+/* ---------- splash: a 90s console booting up ---------- */
+#splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow: hidden; cursor: pointer; outline: none;
+  background: radial-gradient(ellipse 70% 55% at 50% 42%, #2a1d13 0%, var(--night) 60%, #070504 100%); }
+/* scanlines and a curved-glass vignette over everything */
+#splash::before { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, .28) 0 1px, transparent 1px 3px); }
+#splash::after { content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  box-shadow: inset 0 0 180px 40px rgba(0, 0, 0, .85); border-radius: 18px / 24px; }
+#splash .bios { position: absolute; top: 6vh; left: 6vw; margin: 0; color: var(--brass); font: 400 clamp(18px, 2.6vw, 30px)/1.25 var(--num);
+  text-shadow: 0 0 8px rgba(224, 172, 74, .6); white-space: pre; }
+#splash .bios:not(:empty)::after { content: '█'; animation: sp-blink 1s steps(1) infinite; }
+#splash .title-card { position: relative; z-index: 2; display: grid; justify-items: center; text-align: center; padding: 0 16px; opacity: 0; transform: scaleY(.01); filter: brightness(4); }
+#splash.on .bios { display: none; }
+/* CRT power-on: a bright line opens into the picture */
+#splash.on .title-card { animation: sp-crt-on .55s cubic-bezier(.2, .9, .3, 1) forwards; }
+#splash .glow { position: absolute; z-index: -1; left: 50%; top: 40%; width: 120vmin; height: 70vmin; translate: -50% -50%;
+  background: radial-gradient(closest-side, rgba(255, 143, 58, .35), rgba(255, 143, 58, .08) 60%, transparent); animation: sp-breathe 4s ease-in-out infinite; }
+#splash .gem { width: clamp(64px, 11vmin, 112px); fill: var(--brass); stroke: none; filter: drop-shadow(0 0 18px rgba(255, 143, 58, .7)) drop-shadow(0 4px 0 var(--brass-dk));
+  animation: sp-bob 2.4s ease-in-out infinite; }
+#splash .gem .shine { fill: #fff6dc; animation: sp-twinkle 2.4s steps(1) infinite; }
+#splash h1 { margin: .08em 0 0; font-size: clamp(72px, 17vw, 200px); line-height: .9; text-transform: uppercase; letter-spacing: .01em;
+  color: transparent; background: linear-gradient(100deg, #8a6224 0%, #e0ac4a 30%, #fff1c9 45%, #e0ac4a 60%, #b07d2c 100%) 0 0 / 250% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: sp-shine 3.5s linear infinite;
+  filter: drop-shadow(0 4px 0 #5a3d14) drop-shadow(0 8px 0 #2b1c0b) drop-shadow(0 0 30px rgba(255, 143, 58, .35)); }
+#splash .sub { margin: 10px 0 0; color: var(--text); font: 800 clamp(20px, 3vw, 32px) var(--ui); letter-spacing: .32em; text-transform: uppercase; text-shadow: 0 2px 0 #000; }
+#splash .start { margin: 9vh 0 0; color: var(--text); font: 400 clamp(28px, 4.2vw, 46px)/1 var(--num); letter-spacing: .12em; text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(255, 143, 58, .8), 0 3px 0 #000; animation: sp-blink 1.1s steps(1) infinite; }
+#splash .copy { margin: 4vh 0 0; color: var(--dim); font: 400 clamp(16px, 1.8vw, 20px) var(--num); letter-spacing: .08em; }
+#splash .embers { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+#splash .embers i { position: absolute; bottom: -10px; width: 4px; height: 4px; background: var(--ember); box-shadow: 0 0 8px var(--ember); animation: sp-rise linear infinite; }
+#splash.go .start { animation: sp-blink .1s steps(1) 6; color: #fff; }
+#splash.go::after { animation: sp-flash .65s ease-out forwards; }
+#splash.out { animation: sp-fade-out .45s ease-in forwards; pointer-events: none; }
+@keyframes sp-crt-on { 0% { opacity: 1; transform: scaleY(.01); filter: brightness(4); } 50% { transform: scaleY(1.04); } 100% { opacity: 1; transform: none; filter: none; } }
+@keyframes sp-blink { 50% { opacity: 0; } }
+@keyframes sp-breathe { 50% { opacity: .7; scale: 1.06; } }
+@keyframes sp-bob { 50% { translate: 0 -8px; } }
+@keyframes sp-twinkle { 60% { opacity: 0; } }
+@keyframes sp-shine { to { background-position: -250% 0; } }
+@keyframes sp-rise { 0% { translate: 0 0; opacity: 0; } 10% { opacity: 1; } 100% { translate: 30px -105vh; opacity: 0; } }
+@keyframes sp-flash { 40% { background: rgba(255, 241, 214, .55); } 100% { background: transparent; } }
+@keyframes sp-fade-out { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #splash *, #splash::after { animation: none !important; }
+  #splash .title-card { opacity: 1; transform: none; filter: none; }
+}

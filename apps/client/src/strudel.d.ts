@@ -4,4 +4,6 @@ declare module '@strudel/web' {
   export function evaluate(code: string, autoplay?: boolean): Promise<unknown>;
   export function hush(): void;
   export function samples(url: string): Promise<unknown>;
+  export function initAudio(): Promise<void>;
+  export function getAudioContext(): AudioContext;
 }

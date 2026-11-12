@@ -2,11 +2,15 @@ import type { Music } from './api';
 import { settings } from './theme';
 
 // Background music: Strudel code saved by the admin, played by @strudel/web.
-// The library is large, so it loads only when the first track plays.
+// The library is large: it loads behind the splash screen, never in the first bundle.
 const SAMPLES = 'https://raw.githubusercontent.com/felixroos/dough-samples/main';
 let evalError: Error | null = null;
 let strudel: Promise<typeof import('@strudel/web')> | null = null;
+let loaded: typeof import('@strudel/web') | null = null;
+/** true once a user gesture started the audio; until then tracks are only remembered */
+let audioReady = false;
 const load = () => strudel ??= import('@strudel/web').then(async s => {
+  loaded = s;
   await s.initStrudel({
     onEvalError: (e: Error) => { evalError = e; },
     // the same drum machines and samples the strudel.cc REPL has, so a track sounds the same here
@@ -23,7 +27,7 @@ let playing: string | null = null;
 /** Plays Strudel code in a loop; null stops. The same code keeps playing. Rejects with the code's error. */
 export async function playCode(code: string | null) {
   if (!settings().sound) code = null;
-  if (code === playing) return;
+  if (!audioReady || code === playing) return;
   playing = code;
   if (!code) return void (strudel && (await strudel).hush());
   const s = await load();
@@ -31,6 +35,23 @@ export async function playCode(code: string | null) {
   evalError = null;
   await s.evaluate(code);
   if (evalError) { playing = null; throw evalError; }
+}
+
+/** Starts loading the library ahead of the first track. */
+export const preloadMusic = () => void load().catch(e => console.warn('music:', e));
+
+/**
+ * Call from a tap or key press: browsers start audio only inside a user gesture.
+ * Strudel's own unlock waits for a mousedown and, in 1.3.0, never resumes the context, so it is done here.
+ */
+export function startAudio() {
+  void loaded?.getAudioContext().resume(); // still inside the gesture when the library is already here (Safari needs that)
+  return load().then(async s => {
+    await s.initAudio(); // the effect worklets (crush, coarse...)
+    await s.getAudioContext().resume();
+    audioReady = true;
+    apply();
+  }).catch(e => console.warn('music:', e));
 }
 
 const apply = () => {

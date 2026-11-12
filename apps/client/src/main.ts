@@ -1,4 +1,8 @@
 import { showMenu } from './menu';
+import { splash } from './splash';
+
+// the menu loads behind the title screen
+void splash();
 
 showMenu({
   testBattle: async (roster, map, mission) => (await import('./battle')).startTestBattle(roster, map, mission),
