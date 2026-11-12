@@ -4,6 +4,7 @@ import {
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
+import { toMenu } from './nav';
 import { COLOR } from './theme';
 
 const actionColor = (a: ActionDef) => (a.effect === 'heal' ? COLOR.mend : COLOR.strike);
@@ -95,10 +96,9 @@ export class Controller {
       const win = this.state.winner === this.me;
       hud.goal(null);
       const done = this.opts.onDone;
-      // default: reload = back to menu
       return void this.onEnd(this.log).then(lines => {
         hud.banner('');
-        hud.result(win, lines, done ? () => done.run(win) : () => location.reload(), done?.label);
+        hud.result(win, lines, done ? () => done.run(win) : () => toMenu(), done?.label);
       });
     }
     this.scene.setActive(u.id);

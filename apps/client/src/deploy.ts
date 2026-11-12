@@ -1,6 +1,7 @@
 import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
+import { toMenu } from './nav';
 import { COLOR } from './theme';
 
 const SPAWN = COLOR.reach, HOVER = COLOR.brass;
@@ -24,7 +25,7 @@ export class Deploy {
     private onStart: (team: Unit[]) => void,
     /** PvP: the second player deploys team B on the B spawns */
     private team: Team = 'A',
-    private onBack: () => void = () => location.reload(),
+    private onBack: () => void = () => toMenu(),
     /** roster ids that must fight: placed first and cannot leave the field */
     private required: string[] = [],
   ) {}

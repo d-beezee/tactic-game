@@ -6,6 +6,7 @@ import { Controller } from './controller';
 import { Deploy } from './deploy';
 import { hud, mountRotate } from './hud';
 import { music } from './music';
+import { leaveScreen, ownGame, toMenu } from './nav';
 
 /** A campaign chapter in play; onDone runs after the result screen, with the battle already torn down. */
 export interface ChapterRun { chapter: Chapter; onDone: (win: boolean) => void }
@@ -26,7 +27,6 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
   document.getElementById('hud')!.hidden = false;
   // the prologue is played on the brothers' monitor
   document.getElementById('game')!.classList.toggle('crt', !!ch?.crt);
-  let game: Phaser.Game;
   const scene = new BattleScene(map, enemies, s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
     mountRotate(s);
@@ -42,7 +42,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
       } catch (e) {
         hud.banner(`Battaglia non avviata: ${(e as Error).message}`);
         return hud.buttons([
-          { label: 'Menu', icon: 'back', onClick: () => location.reload() },
+          { label: 'Menu', icon: 'back', onClick: () => toMenu() },
           { label: 'Riprova', primary: true, onClick: () => void begin(team) },
         ]);
       }
@@ -76,23 +76,16 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
         }
       }, {
         turnLabel: ch?.crt ? u => `Tocca a ${turns++ % 2 ? 'Nico' : 'Teo'}: ${u.name}` : undefined,
-        onDone: run && { label: 'Continua', run: win => {
-          game.destroy(true);
-          document.getElementById('hud')!.hidden = true;
-          document.getElementById('result')!.hidden = true;
-          document.getElementById('rotate')!.hidden = true;
-          document.getElementById('game')!.classList.remove('crt');
-          run.onDone(win);
-        } },
+        onDone: run && { label: 'Continua', run: win => { leaveScreen(); run.onDone(win); } },
       }).start();
     };
-    new Deploy(s, map, roster, team => void begin(team), 'A', () => location.reload(), ch?.required).start();
+    new Deploy(s, map, roster, team => void begin(team), 'A', () => toMenu(), ch?.required).start();
   });
-  game = new Phaser.Game({
+  ownGame(new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     transparent: true, // the stage background and light shafts are CSS behind the canvas
     scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
     scene: [scene],
-  });
+  }));
 }

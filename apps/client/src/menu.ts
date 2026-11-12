@@ -51,8 +51,6 @@ async function backdrop(roster: RosterUnit[]) {
     console.error(e); // no WebGL or canvas: the menu works without the scene
   }
 }
-/** Set before a reload to land on a menu screen instead of the main one. */
-export const AFTER_KEY = 'tactics.after';
 
 const leaveMenu = () => {
   music(null);
@@ -73,12 +71,13 @@ const enemySummary = (enemies: MissionEnemy[]) => {
   return `${enemies.length === 1 ? '1 nemico' : `${enemies.length} nemici`}, livello ${lo === hi ? lo : `${lo}–${hi}`}`;
 };
 
+/** Opens the menu, at start and on every return from a screen; 'campaign' lands on the chapter list. */
 export function showMenu(go: {
   testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void;
   pvp: (roster: RosterUnit[], id: string, state: PvpState) => void;
   campaign: (roster: RosterUnit[], chapter: Chapter) => void;
   editor: () => void;
-}) {
+}, after?: 'campaign') {
   const root = document.getElementById('menu')!;
   let player: Account;
   let selected = '';
@@ -98,10 +97,7 @@ export function showMenu(go: {
     void api.music().then(setLibrary, () => { /* no music list: the menu works silently */ });
     main();
     // back from a chapter: straight to the chapter list
-    try {
-      if (sessionStorage.getItem(AFTER_KEY) === 'campaign') void campaign();
-      sessionStorage.removeItem(AFTER_KEY);
-    } catch { /* storage blocked: stay on the main menu */ }
+    if (after === 'campaign') void campaign();
   };
 
   /** Sends a change to the server, then redraws the screen with the new state or with the error. */
@@ -737,5 +733,6 @@ export function showMenu(go: {
   };
 
   root.hidden = false;
+  document.getElementById('backdrop')!.hidden = false; // hidden by leaveMenu
   void boot();
 }

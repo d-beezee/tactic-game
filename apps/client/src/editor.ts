@@ -6,6 +6,7 @@ import {
 import { BattleScene, TEAM_COLOR, type Insets } from './BattleScene';
 import { mountRotate } from './hud';
 import { allMaps, deleteMap, isBuiltin, loadMaps, saveMap } from './maps';
+import { onLeave, ownGame, toMenu } from './nav';
 
 type Tool =
   | { k: 'raise' } | { k: 'lower' }
@@ -39,6 +40,7 @@ export function startEditor() {
   const root = document.getElementById('editor')!;
   root.hidden = false;
   document.body.classList.add('editing');
+  onLeave(() => { root.hidden = true; root.replaceChildren(); document.body.classList.remove('editing'); });
   const first = blankMap(newId());
   const scene = new BattleScene(first, [], s => {
     if (import.meta.env.DEV) Object.assign(window, { __scene: s }); // for browser tests
@@ -46,13 +48,13 @@ export function startEditor() {
     s.pannable = false; // dragging paints here
     new Editor(s, root, first).start();
   }, editorInsets);
-  new Phaser.Game({
+  ownGame(new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     backgroundColor: '#1b1712',
     scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
     scene: [scene],
-  });
+  }));
 }
 
 class Editor {
@@ -67,7 +69,10 @@ class Editor {
     this.load(this.map);
     const canvas = this.scene.game.canvas;
     canvas.addEventListener('pointerdown', e => this.stroke(e));
-    window.addEventListener('beforeunload', e => { if (this.dirty) e.preventDefault(); });
+    // closing the tab with unsaved changes asks first; going back to the menu asks with confirmDiscard
+    const unload = (e: BeforeUnloadEvent) => { if (this.dirty) e.preventDefault(); };
+    window.addEventListener('beforeunload', unload);
+    onLeave(() => window.removeEventListener('beforeunload', unload));
     loadMaps(true).then(() => this.refresh(), e => alert(`Mappe salvate non caricate: ${(e as Error).message}`));
   }
 
@@ -161,7 +166,7 @@ class Editor {
     this.ui = { name, w, h, deploy, open, status, save, del, tools };
     this.root.replaceChildren(
       el('header', {},
-        el('button', { textContent: '← Menu', onclick: () => location.reload() }),
+        el('button', { textContent: '← Menu', onclick: () => this.confirmDiscard() && toMenu() }),
         el('h2', { textContent: 'Editor mappe' }),
       ),
       el('section', {},

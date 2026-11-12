@@ -53,6 +53,14 @@ function button(b: Btn): HTMLElement {
 const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco ×1,25', back: 'Alle spalle ×1,5' };
 
 export const hud = {
+  /** Empty and hidden, as before any battle. */
+  reset() {
+    for (const id of ['timeline', 'banner', 'goal', 'ribbon', 'forecast', 'card', 'buttons', 'result', 'rotate']) $(id).replaceChildren();
+    for (const id of ['hud', 'goal', 'forecast', 'result', 'rotate']) $(id).hidden = true;
+    $('ribbon').classList.remove('show');
+    me = 'A';
+    portraitOf = () => '';
+  },
   setPortraits(fn: (classId: string) => string) { portraitOf = fn; },
   setTeam(team: Team) { me = team; },
 
@@ -180,6 +188,9 @@ export const hud = {
   },
 };
 
+/** Q/E handler of the scene on screen; replaced by the next one, so a torn-down scene gets no keys. */
+let rotateKeys: ((e: KeyboardEvent) => void) | null = null;
+
 /** ⟲ ⟳ buttons plus Q/E keys to rotate the camera. */
 export function mountRotate(scene: { rotate(steps: 1 | -1): void }) {
   const box = $('rotate');
@@ -192,9 +203,11 @@ export function mountRotate(scene: { rotate(steps: 1 | -1): void }) {
     b.setAttribute('aria-label', b.title);
   });
   box.hidden = false;
-  window.addEventListener('keydown', e => {
+  if (rotateKeys) window.removeEventListener('keydown', rotateKeys);
+  rotateKeys = e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.repeat || box.hidden) return;
     if (e.key === 'q' || e.key === 'Q') scene.rotate(-1);
     if (e.key === 'e' || e.key === 'E') scene.rotate(1);
-  });
+  };
+  window.addEventListener('keydown', rotateKeys);
 }

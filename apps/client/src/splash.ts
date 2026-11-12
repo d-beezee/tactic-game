@@ -14,9 +14,9 @@ const BIOS = [
 const GEM = 'M3 0h2v1h1v2h1v2H6v2H5v1H3V7H2V5H1V3h1V1h1z';
 
 /**
- * Title screen in the style of a 90s console booting up. A tap or key press starts the game:
- * that gesture is what lets the browser start the music. The boot text plays once per tab;
- * after a reload (every return from a battle) the title comes up at once.
+ * Title screen in the style of a 90s console booting up, shown when the page loads. A tap or key press starts the game:
+ * that gesture is what lets the browser start the music. The boot text plays once per tab; after a manual reload
+ * the title comes up at once.
  */
 export function splash(): Promise<void> {
   preloadMusic();
@@ -61,7 +61,7 @@ export function splash(): Promise<void> {
   return new Promise(resolve => {
     const start = (e: Event) => {
       if (e instanceof KeyboardEvent && (e.repeat || e.key === 'Tab')) return;
-      root.removeEventListener('pointerdown', start);
+      root.removeEventListener('click', start);
       root.removeEventListener('keydown', start);
       void startAudio();
       play('level');
@@ -71,7 +71,8 @@ export function splash(): Promise<void> {
       window.setTimeout(() => { root.classList.add('out'); resolve(); }, still ? 0 : 650);
       window.setTimeout(() => root.remove(), still ? 0 : 1100);
     };
-    root.addEventListener('pointerdown', start);
+    // click, not pointerdown: on touch screens only the end of a tap counts as a gesture that can start audio
+    root.addEventListener('click', start);
     root.addEventListener('keydown', start);
   });
 }

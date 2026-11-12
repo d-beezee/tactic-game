@@ -6,6 +6,7 @@ import { Controller } from './controller';
 import { Deploy } from './deploy';
 import { hud, mountRotate } from './hud';
 import { music } from './music';
+import { onLeave, ownGame, toMenu } from './nav';
 
 const POLL_MS = 1000;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -16,7 +17,10 @@ const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
  */
 export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
   const { map, team } = first;
-  const back = () => void api.pvpLeave(id).finally(() => location.reload());
+  /** true once the match is over here or the player left: stops the poll and the sending */
+  let over = false;
+  onLeave(() => { over = true; });
+  const back = () => { void api.pvpLeave(id).catch(() => { /* the server ends it anyway once we stop polling */ }); toMenu(); };
   music('battle');
   hud.setTeam(team);
   document.getElementById('hud')!.hidden = false;
@@ -28,7 +32,6 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
 
     let placed: string[] = [];
     let controller: Controller | null = null;
-    let over = false;
     /** actions known here, ours and theirs: the next poll asks from this index */
     let count = 0;
     const incoming: BattleAction[] = [];
@@ -76,7 +79,7 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
       const win = st.winner === team;
       const why = st.reason === 'gone' ? (win ? 'L\'avversario si è disconnesso.' : 'Sei rimasto disconnesso troppo a lungo.')
         : win ? 'L\'avversario si è arreso.' : 'Ti sei arreso.';
-      hud.result(win, [why], () => location.reload());
+      hud.result(win, [why], () => toMenu());
     };
 
     const poll = async () => {
@@ -114,11 +117,11 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
     void poll();
   });
 
-  new Phaser.Game({
+  ownGame(new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     transparent: true,
     scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
     scene: [scene],
-  });
+  }));
 }

@@ -1,7 +1,7 @@
 import { facingToward, missionUnits, unitFromRoster, type Chapter, type RosterUnit } from '@tactics/core';
 import { startTestBattle } from './battle';
 import { playCutscene } from './cutscene';
-import { AFTER_KEY } from './menu';
+import { toMenu } from './nav';
 
 /** A campaign chapter: the cutscene, the battle, and on a win the closing cutscene. Then back to the chapter list. */
 export async function startChapter(roster: RosterUnit[], ch: Chapter) {
@@ -17,8 +17,7 @@ export async function startChapter(roster: RosterUnit[], ch: Chapter) {
     chapter: ch,
     onDone: async win => {
       if (win) await playCutscene(ch.after, world);
-      try { sessionStorage.setItem(AFTER_KEY, 'campaign'); } catch { /* storage blocked: the main menu instead */ }
-      location.reload();
+      toMenu('campaign');
     },
   });
 }
