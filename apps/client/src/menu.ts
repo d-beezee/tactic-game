@@ -3,7 +3,7 @@ import {
   unlockedPassives, xpToReach, type ItemDef, type MapData, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account, type User } from './api';
-import { allMaps, BUILTIN_MAPS } from './maps';
+import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
 import { play } from './sfx';
 import { reducedMotion, saveSettings, settings } from './theme';
 
@@ -150,7 +150,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
         el('button', { className: 'menu-btn', textContent: 'Negozio', onclick: shop }),
         el('button', {
           className: 'menu-btn primary', textContent: 'Battaglia di prova',
-          onclick: pickMap,
+          onclick: () => void pickMap(),
         }),
         ...(player.admin ? [
           el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { leaveMenu(); go.editor(); } }),
@@ -254,16 +254,23 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
       ...diffs.flatMap((k, n) => [n ? ', ' : '', `${STAT_SHORT[k]} ${now[k]} `, el(next[k] > now[k] ? 'b' : 'em', { textContent: String(next[k]) })]));
   };
 
-  const pickMap = () => {
-    // the server refuses custom maps from anyone but the admin
-    const maps = player.admin ? allMaps() : BUILTIN_MAPS;
-    if (maps.length === 1) return fight(maps[0]);
+  const pickMap = async () => {
+    try {
+      await loadMaps(player.admin);
+      error = '';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = `Mappe salvate non caricate: ${(e as Error).message}`;
+    }
+    const maps = allMaps();
+    if (maps.length === 1 && !error) return fight(maps[0]);
     root.replaceChildren(
       el('div', { className: 'barracks' },
         el('header', {},
           el('button', { className: 'back', textContent: '← Menu', onclick: main }),
           el('h2', { textContent: 'Scegli la mappa' }),
         ),
+        errorLine(),
         el('div', { className: 'map-list' },
           ...maps.map(m => el('button', { className: 'roster-item', onclick: () => fight(m) },
             el('span', { className: 'rn', textContent: m.name }),

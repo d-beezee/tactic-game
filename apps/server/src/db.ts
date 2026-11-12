@@ -28,6 +28,12 @@ const MIGRATIONS = [
    );
    CREATE INDEX battles_user_id ON battles (user_id);`,
   `ALTER TABLE users ADD COLUMN is_admin boolean NOT NULL DEFAULT false;`,
+  // maps made with the editor, shared with every player; data is the map as parseMap returns it
+  `CREATE TABLE maps (
+     id text PRIMARY KEY,
+     data jsonb NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 /**

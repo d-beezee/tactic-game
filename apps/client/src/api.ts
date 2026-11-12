@@ -40,11 +40,14 @@ export const api = {
   login: (email: string, password: string) => call<Account>('POST', '/auth/login', { email, password }),
   users: () => call<User[]>('GET', '/admin/users'),
   setAdmin: (id: string, admin: boolean) => call<User[]>('PATCH', `/admin/users/${id}`, { admin }),
+  maps: () => call<MapData[]>('GET', '/maps'),
+  saveMap: (m: MapData) => call<MapData[]>('PUT', `/admin/maps/${encodeURIComponent(m.id)}`, m),
+  deleteMap: (id: string) => call<MapData[]>('DELETE', `/admin/maps/${encodeURIComponent(id)}`),
   logout: () => call<unknown>('POST', '/auth/logout'),
   updateUnit: (id: string, change: UnitChange) => call<Player>('PATCH', `/units/${encodeURIComponent(id)}`, change),
   buy: (itemId: string) => call<Player>('POST', '/shop/buy', { itemId }),
   /** The server picks the seed and builds the starting units from its own copy of the roster. */
-  battleStart: (map: MapData, deploy: { id: string; pos: Pos }[]) => call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { map, deploy }),
+  battleStart: (mapId: string, deploy: { id: string; pos: Pos }[]) => call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { mapId, deploy }),
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
     call<{ player: Player; report: XpReport[]; gold: number }>('POST', `/battles/${id}/finish`, { actions }),

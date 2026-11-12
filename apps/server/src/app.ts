@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { buyItem, deployTestBattle, finishTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type Player } from '@tactics/core';
+import { buyItem, deployTestBattle, finishTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type MapData, type Player } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -9,6 +9,8 @@ import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import type pg from 'pg';
 import builtinMap from '../../client/src/maps/demo.json';
+
+const BUILTIN_MAP = parseMap(builtinMap)!;
 import { ensureAdmin, tx } from './db';
 
 const COOKIE = 'sid';
@@ -155,12 +157,13 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   // XP and gold come from that replay, never from what the client says happened.
   app.post('/api/battles', async c => {
     const b = await body(c);
-    const map = parseMap(b.map);
-    if (!map) throw new HttpError(400, 'Mappa non valida');
+    // the map comes from the server's own copy, never from the client
+    const map = b.mapId === BUILTIN_MAP.id ? BUILTIN_MAP
+      : typeof b.mapId === 'string' ? (await pool.query('SELECT data FROM maps WHERE id = $1', [b.mapId])).rows[0]?.data as MapData | undefined
+      : undefined;
+    if (!map) throw new HttpError(404, 'Mappa non trovata');
     const userId = c.get('userId');
-    const { rows: [user] } = await pool.query('SELECT roster, is_admin FROM users WHERE id = $1', [userId]);
-    // only the admin has the map editor, so everyone else fights on the built-in map; parseMap fixes the key order on both sides
-    if (!user.is_admin && JSON.stringify(map) !== JSON.stringify(parseMap(builtinMap))) throw new HttpError(403, 'Solo l\'admin può usare mappe personalizzate');
+    const { rows: [user] } = await pool.query('SELECT roster FROM users WHERE id = $1', [userId]);
     const units = deployTestBattle(user.roster, map, b.deploy);
     const seed = randomBytes(4).readUInt32BE();
     return c.json(await tx(pool, async db => {
@@ -187,7 +190,11 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     }));
   });
 
-  // user management, admin only; checked on every request so a removed admin loses access at once
+  const listMaps = async () => (await pool.query("SELECT data FROM maps ORDER BY data->>'name', id")).rows.map(r => r.data as MapData);
+
+  app.get('/api/maps', async c => c.json(await listMaps()));
+
+  // user and map management, admin only; checked on every request so a removed admin loses access at once
   app.use('/api/admin/*', async (c, next) => {
     const { rows } = await pool.query('SELECT is_admin FROM users WHERE id = $1', [c.get('userId')]);
     if (!rows[0]?.is_admin) throw new HttpError(403, 'Riservato all\'admin');
@@ -208,6 +215,22 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const { rowCount } = await pool.query('UPDATE users SET is_admin = $2 WHERE id = $1', [id, admin]);
     if (!rowCount) throw new HttpError(404, 'Utente non trovato');
     return c.json(await listUsers());
+  });
+
+  app.put('/api/admin/maps/:id', async c => {
+    const map = parseMap(await body(c));
+    const id = c.req.param('id');
+    if (!map || map.id !== id) throw new HttpError(400, 'Mappa non valida');
+    if (!/^[\w-]{1,64}$/.test(id) || id === BUILTIN_MAP.id) throw new HttpError(400, 'Id della mappa non valido');
+    map.name = map.name.trim();
+    if (!map.name || map.name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
+    await pool.query('INSERT INTO maps (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = now()', [id, JSON.stringify(map)]);
+    return c.json(await listMaps());
+  });
+
+  app.delete('/api/admin/maps/:id', async c => {
+    await pool.query('DELETE FROM maps WHERE id = $1', [c.req.param('id')]);
+    return c.json(await listMaps());
   });
 
   app.all('/api/*', c => c.json({ error: 'Non trovato' }, 404));

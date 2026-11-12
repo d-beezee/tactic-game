@@ -5,7 +5,7 @@ import {
 } from '@tactics/core';
 import { BattleScene, TEAM_COLOR, type Insets } from './BattleScene';
 import { mountRotate } from './hud';
-import { allMaps, deleteMap, isBuiltin, saveMap } from './maps';
+import { allMaps, deleteMap, isBuiltin, loadMaps, saveMap } from './maps';
 
 type Tool =
   | { k: 'raise' } | { k: 'lower' }
@@ -68,6 +68,7 @@ class Editor {
     const canvas = this.scene.game.canvas;
     canvas.addEventListener('pointerdown', e => this.stroke(e));
     window.addEventListener('beforeunload', e => { if (this.dirty) e.preventDefault(); });
+    loadMaps(true).then(() => this.refresh(), e => alert(`Mappe salvate non caricate: ${(e as Error).message}`));
   }
 
   // ---------- map changes ----------
@@ -230,17 +231,27 @@ class Editor {
     else this.refresh();
   }
 
-  private save() {
+  private async save() {
     if (isBuiltin(this.map.id)) this.map = { ...this.map, id: newId(), name: `${this.map.name} (copia)` };
-    if (!saveMap(this.map)) return alert('Salvataggio non riuscito: spazio del browser pieno o non disponibile.');
+    this.ui.save.disabled = true; // no double save while the request runs
+    try {
+      await saveMap(this.map);
+    } catch (e) {
+      alert(`Salvataggio non riuscito: ${(e as Error).message}`);
+      return this.refresh();
+    }
     this.dirty = false;
     this.syncInputs();
     this.refresh();
   }
 
-  private remove() {
-    if (!confirm(`Eliminare la mappa "${this.map.name}"? Non si può annullare.`)) return;
-    deleteMap(this.map.id);
+  private async remove() {
+    if (!confirm(`Eliminare la mappa "${this.map.name}"? La perdono tutti i giocatori e non si può annullare.`)) return;
+    try {
+      await deleteMap(this.map.id);
+    } catch (e) {
+      return alert(`Eliminazione non riuscita: ${(e as Error).message}`);
+    }
     this.load(blankMap(newId()));
   }
 

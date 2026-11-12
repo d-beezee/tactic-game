@@ -132,7 +132,7 @@ Nella battaglia di prova i nemici hanno il livello medio delle classi attive del
 
 XP e oro li decide il server, non il client.
 
-1. A fine schieramento il client manda mappa e posizioni a `POST /api/battles`. Il server controlla la mappa e lo schieramento, costruisce le unità dal roster salvato, sceglie il seme casuale e salva tutto. Risponde con id, seme e unità.
+1. A fine schieramento il client manda l'id della mappa e le posizioni a `POST /api/battles`. Il server prende la mappa dalla sua copia (quella di base o una salvata), controlla lo schieramento, costruisce le unità dal roster salvato, sceglie il seme casuale e salva tutto. Risponde con id, seme e unità.
 2. Il client gioca la battaglia in locale con quei dati e registra solo le azioni del giocatore.
 3. A fine battaglia il client manda le azioni a `POST /api/battles/:id/finish`. Il server rigioca la battaglia: applica le azioni del giocatore con `apply` e calcola i turni nemici con la stessa IA. Se un'azione non è valida, o se la lista finisce prima che ci sia un vincitore, rifiuta tutto.
 4. XP e oro vengono dallo stato finale del replay. Il risultato è salvato sulla battaglia: una seconda richiesta con lo stesso id riceve la stessa risposta e non paga due volte.
@@ -142,7 +142,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 ## Account, oro ed equipaggiamento
 
 - **Account:** email e password. Chi si registra da un browser in cui aveva già giocato porta con sé il roster salvato lì.
-- **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Dal menu "Utenti" un admin può dare o togliere il ruolo agli altri account, ma non può toglierlo a sé stesso: così ne resta sempre almeno uno. Solo gli admin vedono l'editor mappe e possono combattere su mappe personalizzate. Gli altri usano la mappa di base, e il server rifiuta le loro richieste con mappe diverse.
+- **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Dal menu "Utenti" un admin può dare o togliere il ruolo agli altri account, ma non può toglierlo a sé stesso: così ne resta sempre almeno uno. Solo gli admin vedono l'editor mappe e possono salvare o eliminare mappe. Tutti i giocatori combattono sulle mappe salvate.
 - **Oro:** si parte con 300. Una vittoria nella battaglia di prova ne dà 20.
 - **Negozio:** vende armi e armature. Ogni acquisto aggiunge una copia all'inventario.
 - **Equipaggiamento:** ogni unità ha due slot, arma e armatura. Una copia di un oggetto può stare su una sola unità alla volta. I bonus sono fissi e si sommano alle statistiche dopo la crescita di livello e prima della passiva.
@@ -181,8 +181,8 @@ Dal menu, "Editor mappe". La voce compare solo all'admin.
 - **Strumenti:** alza e abbassa il terreno, dipingi il tipo di terreno (erba, terra, pietra, acqua, albero), piazza le caselle di partenza blu e nemiche. Alza, abbassa e terreno si applicano anche trascinando sulla mappa.
 - **Proprietà:** nome, dimensioni (da 4 a 24 caselle per lato), unità schierabili per squadra.
 - **Validazione:** la mappa viene controllata a ogni modifica e si può salvare solo se è valida.
-- **Salvataggio:** le mappe si salvano nel browser e si possono esportare o importare come file JSON. Le mappe di base sono di sola lettura e si salvano come copia.
-- **Uso:** le mappe salvate compaiono nella scelta della mappa della battaglia di prova.
+- **Salvataggio:** le mappe si salvano sul server (tabella `maps`) e si possono esportare o importare come file JSON. Le mappe di base sono di sola lettura e si salvano come copia. Le mappe rimaste nel browser da prima vengono caricate sul server la prima volta che l'admin apre l'editor o la scelta della mappa.
+- **Uso:** le mappe salvate compaiono a tutti i giocatori nella scelta della mappa della battaglia di prova. Eliminare una mappa la toglie a tutti.
 
 ## Asset
 
@@ -191,14 +191,11 @@ Dal menu, "Editor mappe". La voce compare solo all'admin.
 
 ## Limiti noti
 
-- Le mappe create con l'editor sono salvate in `localStorage`: vengono perse in una finestra privata o se si cancellano i dati del sito. Roster, oro e inventario sono invece sul server.
-- Le mappe dell'admin restano nel suo browser: gli altri giocatori non le vedono. Per condividerle servono mappe salvate sul server.
 - Si può avere una sola battaglia aperta per account: iniziarne una seconda, anche da un'altra scheda, annulla la prima.
 - Non c'è verifica dell'email né recupero della password: servirebbe un servizio di posta.
 - Gli oggetti non si possono rivendere e non hanno restrizioni di classe. I nemici non hanno equipaggiamento.
 - I tentativi di accesso falliti sono contati in memoria: il limite vale per una sola istanza del server e si azzera a ogni riavvio.
 - Gli attacchi a distanza non controllano la linea di tiro.
-- Non si può zoomare con le dita.
 - Le sprite hanno solo la posa ferma.
 - In battaglia non si può annullare un movimento.
 

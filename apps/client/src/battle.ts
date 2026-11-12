@@ -24,7 +24,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
       hud.banner('Preparazione della battaglia…');
       let battle: Awaited<ReturnType<typeof api.battleStart>>;
       try {
-        battle = await api.battleStart(map, team.map(u => ({ id: u.id, pos: u.pos })));
+        battle = await api.battleStart(map.id, team.map(u => ({ id: u.id, pos: u.pos })));
       } catch (e) {
         hud.banner(`Battaglia non avviata: ${(e as Error).message}`);
         return hud.buttons([
