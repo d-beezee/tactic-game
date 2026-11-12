@@ -224,7 +224,7 @@ describe('player', () => {
   });
 });
 
-import { deployTestBattle, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, type BattleAction } from '../src';
+import { deployTeam, deployTestBattle, missionUnits, PVP_LEVEL, parseMissionEnemies, payBattle, replayTestBattle, type BattleAction } from '../src';
 describe('test battle on the server', () => {
   const map = demo as MapData;
   const p = newPlayer();
@@ -279,6 +279,14 @@ describe('test battle on the server', () => {
     bad([{ ...many[0], pos: map.spawns.A[0] }]);
     bad([{ ...many[0], pos: { x: -1, y: 0 } }]);
     bad([many[0], many[0]]);
+  });
+
+  it('PvP teams deploy on their own spawns at the fixed level, with distinct ids', () => {
+    const b = deployTeam(p.roster, map, map.spawns.B.slice(0, 2).map((pos, i) => ({ id: p.roster[i].id, pos })), 'B', { level: PVP_LEVEL, idPrefix: 'b-' });
+    expect(b.map(u => [u.id, u.team, u.level, u.facing])).toEqual([['b-r1', 'B', PVP_LEVEL, 'N'], ['b-r2', 'B', PVP_LEVEL, 'N']]);
+    expect(() => deployTeam(p.roster, map, [{ id: 'r1', pos: map.spawns.A[0] }], 'B')).toThrow(PlayerError);
+    const tooMany = map.spawns.B.slice(0, map.maxDeploy + 1).map((pos, i) => ({ id: p.roster[i].id, pos }));
+    if (tooMany.length > map.maxDeploy) expect(() => deployTeam(p.roster, map, tooMany, 'B')).toThrow(PlayerError);
   });
 
   it('rejects unfinished, illegal and malformed action lists', () => {

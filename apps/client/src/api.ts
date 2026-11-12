@@ -8,6 +8,21 @@ export interface Account extends Player {
 
 export interface User { id: string; email: string; admin: boolean; createdAt: string }
 
+/** A PvP match as the poll sees it; actions start at the `from` index asked for. */
+export interface PvpState {
+  status: 'waiting' | 'deploy' | 'battle' | 'done';
+  team: 'A' | 'B';
+  code: string | null;
+  map: MapData;
+  deployed: boolean;
+  seed: number | null;
+  units: Unit[] | null;
+  actions: BattleAction[];
+  winner: 'A' | 'B' | null;
+  /** how a done match ended: battle, resign, gone (the other player vanished) */
+  reason: 'battle' | 'resign' | 'gone' | null;
+}
+
 /** A daily mission; done = already won today by this player. */
 export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; done: boolean }
 
@@ -56,6 +71,14 @@ export const api = {
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
     call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean }>('POST', `/battles/${id}/finish`, { actions }),
+  pvpQueue: () => call<{ id: string }>('POST', '/pvp/queue'),
+  pvpRoom: () => call<{ id: string }>('POST', '/pvp/rooms'),
+  pvpJoin: (code: string) => call<{ id: string }>('POST', '/pvp/join', { code }),
+  pvpState: (id: string, from = 0) => call<PvpState>('GET', `/pvp/${id}?from=${from}`),
+  pvpDeploy: (id: string, deploy: { id: string; pos: Pos }[]) => call<unknown>('POST', `/pvp/${id}/deploy`, { deploy }),
+  /** index = the action's place in the whole battle, so a retry is not applied twice */
+  pvpAction: (id: string, index: number, action: BattleAction) => call<unknown>('POST', `/pvp/${id}/actions`, { index, action }),
+  pvpLeave: (id: string) => call<unknown>('POST', `/pvp/${id}/leave`),
   missions: () => call<Mission[]>('GET', '/missions'),
   createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[] }) => call<Mission[]>('POST', '/admin/missions', m),
   deleteMission: (id: string) => call<Mission[]>('DELETE', `/admin/missions/${id}`),

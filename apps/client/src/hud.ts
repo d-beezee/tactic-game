@@ -1,4 +1,4 @@
-import { CLASSES, unitById, type BattleState, type Side, type Unit } from '@tactics/core';
+import { CLASSES, unitById, type BattleState, type Side, type Team, type Unit } from '@tactics/core';
 import { play, type Sound } from './sfx';
 import { reducedMotion } from './theme';
 
@@ -17,6 +17,9 @@ export interface Btn { label: string; hint?: string; icon?: Icon; onClick: () =>
 
 const $ = (id: string) => document.getElementById(id)!;
 const el = (tag: string, className: string, text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
+
+/** The local player's team: in PvP it can be B. */
+let me: Team = 'A';
 
 /** Portrait data URL for a class; set by the battle once the sprites are loaded. */
 let portraitOf: (classId: string) => string = () => '';
@@ -50,6 +53,7 @@ const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco 
 
 export const hud = {
   setPortraits(fn: (classId: string) => string) { portraitOf = fn; },
+  setTeam(team: Team) { me = team; },
 
   timeline(s: BattleState) {
     const items: HTMLElement[] = [];
@@ -94,7 +98,7 @@ export const hud = {
     now.style.width = ghost.style.width = pct;
     bar.append(ghost, now);
     const head = el('div', 'head'), who = el('div', '');
-    who.append(el('div', 'name', u.name), el('div', 'cls', `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? `, ${CLASSES[u.passive].passive.name}` : ''}${u.team === 'A' ? '' : ', nemico'}`));
+    who.append(el('div', 'name', u.name), el('div', 'cls', `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? `, ${CLASSES[u.passive].passive.name}` : ''}${u.team === me ? '' : ', nemico'}`));
     head.append(medal(u), who);
     const hpRow = el('div', 'hp-row');
     hpRow.append(el('span', 'hp-num', `${Math.max(0, u.hp)}/${stats.maxHp}`), el('span', 'hp-lbl', 'PV'));

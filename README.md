@@ -8,10 +8,11 @@ Gioco strategico a turni su griglia isometrica a più livelli di altezza. Si gio
 - una caserma dove vedi il roster, cambi classe alle unità e le equipaggi;
 - un negozio dove compri armi e armature con l'oro;
 - missioni giornaliere create dall'admin: le uniche battaglie che danno XP e oro;
+- PvP contro altri giocatori: coda in lobby o stanza privata con codice;
 - una battaglia di prova contro l'IA, su una mappa a scelta, con schieramento iniziale tramite drag and drop, che non dà ricompense;
 - un editor di mappe.
 
-La campagna a capitoli e il PvP non ci sono ancora.
+La campagna a capitoli non c'è ancora.
 
 ## Avvio
 
@@ -96,7 +97,7 @@ apps/client/        client Vite + Phaser 3
 
 Le regole stanno tutte in `packages/core`. Il server non le riscrive: per ogni richiesta carica il giocatore, applica una funzione pura del core (`buyItem`, `updateUnit`, `finishTestBattle`) e salva il risultato. Il client usa lo stesso codice solo per mostrare cosa è permesso.
 
-La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il futuro server PvP potrà usare la stessa funzione per validare le mosse. La telecamera ruota a scatti di 90° (pulsanti ⟲ ⟳ o tasti Q/E): la logica resta in coordinate di griglia, e solo `BattleScene` converte in coordinate di vista. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
+La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il server PvP usa la stessa funzione per validare le mosse. La telecamera ruota a scatti di 90° (pulsanti ⟲ ⟳ o tasti Q/E): la logica resta in coordinate di griglia, e solo `BattleScene` converte in coordinate di vista. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
 
 ## Regole
 
@@ -146,6 +147,16 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/test
 - **Nemici:** da 1 a 12, ognuno con classe (anche avanzata), livello da 1 a 8 e casella di partenza. Si piazzano toccando le caselle di una griglia della mappa. Una casella deve essere calpestabile e non può essere una partenza del giocatore. Alla scelta della mappa la griglia propone un nemico per ogni partenza nemica. Il numero di nemici non dipende da `maxDeploy`, che limita solo il giocatore.
 - **Gioco:** dal menu "Missioni giornaliere" ogni giocatore vede tutte le missioni. Una missione vinta paga XP e l'oro indicato, una volta al giorno per giocatore. Il giorno cambia a mezzanotte, ora italiana (`Europe/Rome`). Una missione persa si può rigiocare.
 - **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/testBattle.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
+
+## PvP
+
+- **Entrare:** dal menu "PvP". "Cerca un avversario" mette in coda: se c'è già qualcuno in coda, la partita parte subito, altrimenti si aspetta il prossimo. "Crea una stanza per un amico" dà un codice di 6 caratteri da condividere; l'amico lo scrive in "Entra con il codice". Un codice vale finché la stanza non è piena.
+- **Partita:** mappa di base. Chi crea la stanza, o aspettava in coda, è la squadra blu (A); l'altro la rossa (B), sulle partenze nemiche. Ognuno schiera fino a `maxDeploy` unità; la battaglia parte quando hanno schierato entrambi.
+- **Livelli:** tutte le unità combattono al livello 5 (`PVP_LEVEL`), con passiva ed equipaggiamento. Il PvP non dà XP né oro.
+- **Server autoritativo:** il server conserva le azioni della partita. A ogni mossa rigioca la battaglia, controlla che tocchi alla squadra di chi la manda e la applica con `apply`. Ogni azione porta il suo indice, così un invio ripetuto non viene applicato due volte.
+- **Comunicazione:** ogni client interroga il server una volta al secondo (`GET /api/pvp/:id?from=n`) e riceve le azioni nuove. Niente WebSocket.
+- **Fine:** vince chi elimina le unità avversarie. "Arrenditi" dà la vittoria all'altro. Chi non si fa sentire per 45 secondi (pagina chiusa, rete persa) perde. Entrare di nuovo in coda o in una stanza chiude la partita precedente con una resa.
+- **Dati:** tabella `pvp_matches`, una riga per partita, con stato (`waiting`, `deploy`, `battle`, `done`), schieramenti, unità, seme e azioni.
 
 ## Account, oro ed equipaggiamento
 
@@ -206,8 +217,9 @@ Dal menu, "Editor mappe". La voce compare solo all'admin.
 - Gli attacchi a distanza non controllano la linea di tiro.
 - Le sprite hanno solo la posa ferma.
 - In battaglia non si può annullare un movimento.
+- PvP: ricaricare la pagina fa perdere la partita in corso, perché non c'è un modo per rientrarci. Non c'è un limite di tempo per turno: un avversario presente ma fermo blocca la partita finché qualcuno non si arrende.
+- PvP: il polling ogni secondo regge pochi giocatori alla volta. Per molte partite insieme servono SSE o WebSocket.
 
 ## Roadmap
 
 1. Campagna a capitoli.
-2. PvP live a turni con livelli normalizzati e server autoritativo.

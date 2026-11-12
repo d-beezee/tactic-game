@@ -51,6 +51,27 @@ const MIGRATIONS = [
    ALTER TABLE battles ADD COLUMN mission_id uuid REFERENCES missions(id) ON DELETE SET NULL;`,
   // the enemies a mission places: [{ classId, level, pos }], checked by parseMissionEnemies
   `ALTER TABLE missions ADD COLUMN enemies jsonb NOT NULL DEFAULT '[]';`,
+  // PvP: waiting (lobby or private code) -> deploy -> battle -> done. actions is the whole battle, replayed on each move.
+  `CREATE TABLE pvp_matches (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     code text UNIQUE,
+     status text NOT NULL DEFAULT 'waiting',
+     player_a uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     player_b uuid REFERENCES users(id) ON DELETE CASCADE,
+     seen_a timestamptz NOT NULL DEFAULT now(),
+     seen_b timestamptz NOT NULL DEFAULT now(),
+     map jsonb NOT NULL,
+     deploy_a jsonb,
+     deploy_b jsonb,
+     seed bigint,
+     units jsonb,
+     actions jsonb NOT NULL DEFAULT '[]',
+     winner text,
+     reason text,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX pvp_matches_player_a ON pvp_matches (player_a);
+   CREATE INDEX pvp_matches_player_b ON pvp_matches (player_b);`,
 ];
 
 /**
@@ -89,4 +110,5 @@ export const migrate = (pool: pg.Pool) => tx(pool, async db => {
   }
   await ensureAdmin(db);
   await db.query('DELETE FROM sessions WHERE expires_at < now()');
+  await db.query(`DELETE FROM pvp_matches WHERE status = 'waiting' AND created_at < now() - interval '1 day'`);
 });

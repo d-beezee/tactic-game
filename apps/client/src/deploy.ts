@@ -1,4 +1,4 @@
-import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Unit } from '@tactics/core';
+import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
 import { COLOR } from './theme';
@@ -22,7 +22,12 @@ export class Deploy {
     private map: MapData,
     private roster: RosterUnit[],
     private onStart: (team: Unit[]) => void,
+    /** PvP: the second player deploys team B on the B spawns */
+    private team: Team = 'A',
+    private onBack: () => void = () => location.reload(),
   ) {}
+
+  private get facing() { return this.team === 'A' ? 'S' : 'N'; }
 
   start() {
     this.scene.game.canvas.addEventListener('pointerdown', this.onCanvasDown);
@@ -30,7 +35,7 @@ export class Deploy {
     this.render();
   }
 
-  private get spawns() { return this.map.spawns.A; }
+  private get spawns() { return this.map.spawns[this.team]; }
   private get max() { return this.map.maxDeploy; }
   private at(p: Pos) { return this.placed.find(u => samePos(u.pos, p)); }
   private isSpawn(p: Pos | null): p is Pos { return !!p && this.spawns.some(s => samePos(s, p)); }
@@ -46,12 +51,12 @@ export class Deploy {
 
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
       const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
-      const face = Object.assign(document.createElement('div'), { className: 'medal A' });
+      const face = Object.assign(document.createElement('div'), { className: `medal ${this.team}` });
       face.style.backgroundImage = `url(${this.scene.portrait(r.classId)})`;
       const txt = document.createElement('span');
       txt.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
       item.append(face, txt);
-      item.onpointerdown = e => { hud.card(unitFromRoster(r, 'A', { x: 0, y: 0 }, 'S')); this.startDrag({ kind: 'tray', r }, e); };
+      item.onpointerdown = e => { hud.card(unitFromRoster(r, this.team, { x: 0, y: 0 }, this.facing)); this.startDrag({ kind: 'tray', r }, e); };
       return item;
     });
     const trayBox = Object.assign(document.createElement('div'), { className: 'tray' });
@@ -59,7 +64,7 @@ export class Deploy {
 
     hud.buttons([
       trayBox,
-      { label: 'Menu', icon: 'back', onClick: () => location.reload() },
+      { label: 'Menu', icon: 'back', onClick: this.onBack },
       {
         label: this.placed.length ? 'Inizia battaglia' : 'Schiera almeno 1 unità',
         primary: true,
@@ -124,7 +129,7 @@ export class Deploy {
     if (!this.isSpawn(target)) return;
     if (occupant) this.remove(occupant);                               // replace: occupant back to the tray
     else if (this.placed.length >= this.max) return; // full: the banner already shows N/N
-    const u = unitFromRoster(src.r, 'A', target, 'S');
+    const u = unitFromRoster(src.r, this.team, target, this.facing);
     this.placed.push(u);
     this.scene.addUnit(u);
     this.scene.dropIn(u.id);

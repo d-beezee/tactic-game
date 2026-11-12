@@ -2,5 +2,6 @@ import { showMenu } from './menu';
 
 showMenu({
   testBattle: async (roster, map, mission) => (await import('./battle')).startTestBattle(roster, map, mission),
+  pvp: async (roster, id, state) => (await import('./pvp')).startPvp(roster, id, state),
   editor: async () => (await import('./editor')).startEditor(),
 });

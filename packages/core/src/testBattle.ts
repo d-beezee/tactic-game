@@ -1,9 +1,9 @@
 import { planTurn } from './ai';
 import { activeUnit, apply, createBattle, type BattleState } from './battle';
 import { CLASSES } from './classes';
-import { isWalkable, key, samePos, type MapData, type Pos } from './map';
+import { isWalkable, key, samePos, type MapData, type Pos, type Team } from './map';
 import { PlayerError, type Player } from './player';
-import { applyBattleXp, classLevel, unitFromRoster, type RosterUnit } from './roster';
+import { applyBattleXp, classLevel, type RosterUnit } from './roster';
 import { createUnit, MAX_CLASS_LEVEL, type Unit } from './units';
 
 const ENEMY_CLASSES = ['warrior', 'archer', 'cleric'];
@@ -41,20 +41,29 @@ export function parseMissionEnemies(map: MapData, data: unknown): MissionEnemy[]
 export const missionUnits = (enemies: MissionEnemy[]): Unit[] => enemies.map((e, i) =>
   createUnit(`enemy${i}`, ENEMY_NAMES[i % ENEMY_NAMES.length], 'B', e.classId, e.pos, 'N', e.level));
 
+/** In PvP every unit fights at this class level; passive and equipment stay. */
+export const PVP_LEVEL = 5;
+
 /**
- * Starting units of a battle: the player's deployed units plus the enemies (a mission's, or the test battle's).
- * `deploy` is untrusted: [{ id, pos }], each unit of the roster once, on the player's spawn cells.
+ * A team's deployed units. `deploy` is untrusted: [{ id, pos }], each roster unit at most once, on the team's spawn cells,
+ * 1 to maxDeploy of them. `level` overrides class levels (PvP); `idPrefix` keeps unit ids apart when both teams are rosters.
  */
-export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unknown, enemies = testEnemies(roster, map)): Unit[] {
-  if (!Array.isArray(deploy)) throw new PlayerError('Schieramento non valido');
-  const team = deploy.map((d: { id?: unknown; pos?: Pos }) => {
+export function deployTeam(roster: RosterUnit[], map: MapData, deploy: unknown, team: Team, opts: { level?: number; idPrefix?: string } = {}): Unit[] {
+  if (!Array.isArray(deploy) || deploy.length < 1 || deploy.length > map.maxDeploy) throw new PlayerError('Schieramento non valido');
+  const units = deploy.map((d: { id?: unknown; pos?: Pos }) => {
     const r = roster.find(u => u.id === d?.id);
     const pos = d?.pos;
-    if (!r || !Number.isInteger(pos?.x) || !Number.isInteger(pos?.y) || !map.spawns.A.some(s => samePos(s, pos!))) throw new PlayerError('Schieramento non valido');
-    return unitFromRoster(r, PLAYER, { x: pos!.x, y: pos!.y }, 'S');
+    if (!r || !Number.isInteger(pos?.x) || !Number.isInteger(pos?.y) || !map.spawns[team].some(s => samePos(s, pos!))) throw new PlayerError('Schieramento non valido');
+    return createUnit(`${opts.idPrefix ?? ''}${r.id}`, r.name, team, r.classId, { x: pos!.x, y: pos!.y }, team === 'A' ? 'S' : 'N',
+      opts.level ?? classLevel(r, r.classId), r.passive, r.equip);
   });
-  if (new Set(team.map(u => u.id)).size !== team.length) throw new PlayerError('Schieramento non valido');
-  const units = [...team, ...enemies];
+  if (new Set(units.map(u => u.id)).size !== units.length || new Set(units.map(u => key(u.pos))).size !== units.length) throw new PlayerError('Schieramento non valido');
+  return units;
+}
+
+/** Starting units of a battle against the AI: the player's deployed units plus the enemies (a mission's, or the test battle's). */
+export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unknown, enemies = testEnemies(roster, map)): Unit[] {
+  const units = [...deployTeam(roster, map, deploy, PLAYER), ...enemies];
   createBattle(map, units, 0); // checks cells and deploy count
   return units;
 }

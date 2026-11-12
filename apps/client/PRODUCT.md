@@ -26,8 +26,8 @@ Le regole sono tutte in un core puro e deterministico condiviso da client e serv
 
 ## Capabilities and Constraints
 
-- Esistono: accesso con email e password, menu, caserma (classi, passive, equipaggiamento), negozio con oro, schieramento drag and drop, missioni giornaliere (le uniche che danno XP e oro), battaglia di prova senza ricompense, editor mappe e gestione missioni (admin).
-- Non esistono ancora: campagna a capitoli, PvP.
+- Esistono: accesso con email e password, menu, caserma (classi, passive, equipaggiamento), negozio con oro, schieramento drag and drop, missioni giornaliere (le uniche che danno XP e oro), battaglia di prova senza ricompense, PvP con coda o codice (livelli a 5, senza ricompense), editor mappe e gestione missioni (admin).
+- Non esistono ancora: campagna a capitoli.
 - Regole che l'interfaccia deve rendere visibili: colpo sul fianco ×1,25, alle spalle ×1,5, +5% di danno per livello di altezza (massimo 4), gittata a distanza +1 ogni 2 livelli, corpo a corpo entro 2 livelli di dislivello.
 - Classi: Guerriero, Arciere, Chierico; avanzate Paladino, Ranger, Saggio.
 - Stack: TypeScript, Phaser 3.90 (WebGL), Vite, server Hono + Postgres.

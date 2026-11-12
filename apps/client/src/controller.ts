@@ -1,12 +1,11 @@
 import {
   CLASSES, activeUnit, apply, rangeCells, destinations, expectedAmount, facingToward, heightAt, key, pathTo, planTurn, reachable, samePos, sideOf, targetsFor,
-  type ActionDef, type BattleAction, type BattleState, type Dir, type Pos,
+  type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud } from './hud';
 import { COLOR } from './theme';
 
-const PLAYER = 'A';
 const actionColor = (a: ActionDef) => (a.effect === 'heal' ? COLOR.mend : COLOR.strike);
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -28,8 +27,18 @@ export class Controller {
   /** where the active unit will face when the turn ends: its last step, or where it already looked */
   private facing: Dir = 'S';
 
-  /** onEnd sends the player's actions to be replayed and returns lines for the result screen. */
-  constructor(private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>) {
+  /** the local player's team */
+  private me: Team;
+
+  /**
+   * onEnd sends the player's actions to be replayed and returns lines for the result screen.
+   * PvP: `remote` hands out the opponent's actions one at a time, `onAction` sends each of ours, `onResign` gives up.
+   */
+  constructor(
+    private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>,
+    private opts: { me?: Team; remote?: () => Promise<BattleAction>; onAction?: (a: BattleAction) => void; onResign?: () => void } = {},
+  ) {
+    this.me = opts.me ?? 'A';
     scene.events.on('cell', (p: Pos) => void this.onCell(p));
     scene.events.on('hover', (p: Pos | null) => this.onHover(p));
   }
@@ -66,7 +75,7 @@ export class Controller {
       this.scene.setActive(null);
       hud.buttons([]);
       hud.banner('Salvataggio…');
-      const win = this.state.winner === PLAYER;
+      const win = this.state.winner === this.me;
       // reload = back to menu
       return void this.onEnd(this.log).then(lines => { hud.banner(''); hud.result(win, lines, () => location.reload()); });
     }
@@ -74,9 +83,9 @@ export class Controller {
     this.scene.focus(u.pos);
     this.facing = u.facing;
     hud.card(u);
-    hud.ribbon(u.team === PLAYER ? `Turno di ${u.name}` : `Turno nemico: ${u.name}`);
-    if (u.team === PLAYER) this.menu();
-    else void this.runAi();
+    hud.ribbon(u.team === this.me ? `Turno di ${u.name}` : `Turno nemico: ${u.name}`);
+    if (u.team === this.me) this.menu();
+    else void (this.opts.remote ? this.runRemote() : this.runAi());
   }
 
   private menu() {
@@ -100,6 +109,7 @@ export class Controller {
       };
     });
     hud.buttons([
+      ...this.resignButton(),
       { label: 'Muovi', icon: 'move', hint: this.state.moved ? 'già fatto' : undefined, disabled: this.state.moved, onClick: () => this.move() },
       ...actions,
       { label: 'Direzione', icon: 'face', hint: 'facoltativa', onClick: () => this.face() },
@@ -188,9 +198,12 @@ export class Controller {
     hud.buttons([]);
     this.scene.clearHighlights();
     try {
-      const mine = this.unit.team === PLAYER;
+      const mine = this.unit.team === this.me;
       this.state = apply(this.state, a);
-      if (mine) this.log.push(a);
+      if (mine) {
+        this.log.push(a);
+        this.opts.onAction?.(a);
+      }
     } catch (e) {
       console.error(e);
       return;
@@ -221,6 +234,31 @@ export class Controller {
     if (a.type !== 'end') this.scene.showFacing(this.unit.id, this.facing);
     if (this.state.events.some(e => e.type === 'damage' || e.type === 'heal')) await wait(900);
     hud.card(this.unit);
+  }
+
+  private resignButton() {
+    const resign = this.opts.onResign;
+    return resign ? [{ label: 'Arrenditi', icon: 'back' as const, onClick: () => confirm('Arrenderti? La vittoria va all\'avversario.') && resign() }] : [];
+  }
+
+  /** PvP: plays the opponent's actions as they arrive, until their unit ends its turn. */
+  private async runRemote() {
+    this.mode = { k: 'busy' };
+    hud.buttons(this.resignButton());
+    hud.banner(`L'avversario muove ${this.unit.name}…`);
+    this.scene.focus(this.unit.pos);
+    for (;;) {
+      const a = await this.opts.remote!();
+      if (a.type === 'act') {
+        const action = CLASSES[this.unit.classId].actions.find(x => x.id === a.actionId)!;
+        this.scene.highlight([a.target], actionColor(action));
+        await wait(350);
+      }
+      await this.commit(a);
+      hud.buttons(this.resignButton());
+      if (this.state.winner || a.type === 'end') break;
+    }
+    this.beginTurn();
   }
 
   private async runAi() {

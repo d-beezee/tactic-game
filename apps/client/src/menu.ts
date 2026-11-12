@@ -2,7 +2,7 @@ import {
   CLASSES, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
   unlockedPassives, xpToReach, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
-import { api, ApiError, type Account, type Mission, type User } from './api';
+import { api, ApiError, type Account, type Mission, type PvpState, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
 import { play } from './sfx';
 import { reducedMotion, saveSettings, settings } from './theme';
@@ -68,7 +68,11 @@ const enemySummary = (enemies: MissionEnemy[]) => {
   return `${enemies.length === 1 ? '1 nemico' : `${enemies.length} nemici`}, livello ${lo === hi ? lo : `${lo}–${hi}`}`;
 };
 
-export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void; editor: () => void }) {
+export function showMenu(go: {
+  testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void;
+  pvp: (roster: RosterUnit[], id: string, state: PvpState) => void;
+  editor: () => void;
+}) {
   const root = document.getElementById('menu')!;
   let player: Account;
   let selected = '';
@@ -150,6 +154,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData, 
   };
 
   const main = () => {
+    pvpWait++;
     error = '';
     pending = notice = '';
     root.replaceChildren(
@@ -159,6 +164,7 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData, 
         el('button', { className: 'menu-btn', textContent: 'Caserma', onclick: barracks }),
         el('button', { className: 'menu-btn', textContent: 'Negozio', onclick: shop }),
         el('button', { className: 'menu-btn primary', textContent: 'Missioni giornaliere', onclick: () => void missions() }),
+        el('button', { className: 'menu-btn', textContent: 'PvP', onclick: () => pvp() }),
         el('button', { className: 'menu-btn', textContent: 'Battaglia di prova', onclick: () => void pickMap() }),
         ...(player.admin ? [
           el('button', { className: 'menu-btn', textContent: 'Gestisci missioni', onclick: () => void manageMissions(api.missions()) }),
@@ -199,6 +205,77 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData, 
     }
   };
   const mapName = (id: string) => allMaps().find(m => m.id === id)?.name;
+
+  /** PvP: search the lobby, open a room with a code, or join a friend's code. */
+  let pvpWait = 0; // bumped to stop the poll of a wait screen that was left
+  const pvp = () => {
+    pvpWait++;
+    const code = el('input', { className: 'field', placeholder: 'Codice', ariaLabel: 'Codice dell\'amico', maxLength: 6, autocapitalize: 'characters', autocomplete: 'off' });
+    const join = el('form', { className: 'mission-form' }, code, el('button', { className: 'menu-btn', type: 'submit', textContent: 'Entra con il codice' }));
+    join.onsubmit = e => { e.preventDefault(); void waitMatch(api.pvpJoin(code.value)); };
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: 'PvP' }),
+        ),
+        errorLine(),
+        el('p', { className: 'hint wide', textContent: 'Tutte le unità combattono al livello 5, con passive ed equipaggiamento. Niente XP né oro: si gioca per vincere.' }),
+        el('div', { className: 'pvp-actions' },
+          el('button', { className: 'menu-btn primary', textContent: 'Cerca un avversario', onclick: () => void waitMatch(api.pvpQueue()) }),
+          el('button', { className: 'menu-btn', textContent: 'Crea una stanza per un amico', onclick: () => void waitMatch(api.pvpRoom()) }),
+          join,
+        ),
+      ),
+    );
+  };
+
+  /** Waits in the lobby or in a room until someone joins, then starts the match. */
+  const waitMatch = async (request: Promise<{ id: string }>) => {
+    const gen = ++pvpWait;
+    let id: string;
+    try {
+      ({ id } = await request);
+      error = '';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = (e as Error).message;
+      return pvp();
+    }
+    const cancel = () => { pvpWait++; void api.pvpLeave(id).catch(() => {}); pvp(); };
+    let shownCode: string | null | undefined;
+    while (gen === pvpWait) {
+      let st: PvpState;
+      try {
+        st = await api.pvpState(id);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return auth();
+        if (e instanceof ApiError && e.status === 404) { error = 'La stanza è stata chiusa'; return pvp(); }
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      if (gen !== pvpWait) return;
+      if (st.status !== 'waiting') {
+        play('select');
+        leaveMenu();
+        return go.pvp(player.roster, id, st);
+      }
+      if (shownCode !== st.code) {
+        shownCode = st.code;
+        const copy = el('button', { className: 'back', textContent: 'Copia' });
+        copy.onclick = () => void navigator.clipboard?.writeText(st.code!).then(() => { copy.textContent = 'Copiato'; }, () => {});
+        root.replaceChildren(
+          el('div', { className: 'menu-main pvp-wait' },
+            ...(st.code
+              ? [el('p', { className: 'hint', textContent: 'Manda questo codice a un amico:' }), el('div', { className: 'room-code', textContent: st.code }), copy]
+              : [el('h2', { textContent: 'In cerca di un avversario…' }), el('p', { className: 'hint', textContent: 'Appena entra qualcun altro in coda, si parte.' })]),
+            el('button', { className: 'menu-btn', textContent: 'Annulla', onclick: cancel }),
+          ),
+        );
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  };
 
   /** Today's daily missions: each pays XP and gold once a day, on a win. */
   const missions = async () => {

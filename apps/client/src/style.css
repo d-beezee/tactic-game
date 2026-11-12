@@ -297,6 +297,11 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
 .cell.t-g { background: #5a8f3a; } .cell.t-d { background: #8a6038; } .cell.t-s { background: #7b756c; } .cell.t-w { background: #2b6a8c; } .cell.t-x { background: #1f1915; }
 .cell.mine { box-shadow: inset 0 0 0 3px var(--team-a); }
 .cell.foe { background: var(--team-b); filter: none; text-shadow: 0 1px 0 #000; }
+.pvp-actions { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.pvp-wait { text-align: center; justify-items: center; }
+.pvp-wait h2 { margin: 0; font: 400 40px var(--display); color: var(--text); }
+.room-code { font: 400 clamp(64px, 14vw, 120px)/1 var(--display); letter-spacing: .08em; color: var(--brass); font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 40px rgba(224, 172, 74, .35); user-select: text; }
 .barracks > .hint.wide { grid-column: 1 / -1; }
 .user-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
 .user-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; min-height: 58px; padding: 6px 14px; }
