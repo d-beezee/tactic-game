@@ -34,6 +34,23 @@ const MIGRATIONS = [
      data jsonb NOT NULL,
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // daily missions: each pays XP and gold once per player per day, on a win; map_id is a saved map or the built-in one
+  `CREATE TABLE missions (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     name text NOT NULL,
+     map_id text NOT NULL,
+     gold integer NOT NULL CHECK (gold >= 0),
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE mission_wins (
+     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     mission_id uuid NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+     day date NOT NULL,
+     PRIMARY KEY (user_id, mission_id, day)
+   );
+   ALTER TABLE battles ADD COLUMN mission_id uuid REFERENCES missions(id) ON DELETE SET NULL;`,
+  // the enemies a mission places: [{ classId, level, pos }], checked by parseMissionEnemies
+  `ALTER TABLE missions ADD COLUMN enemies jsonb NOT NULL DEFAULT '[]';`,
 ];
 
 /**

@@ -11,7 +11,6 @@ export interface Player {
 }
 
 export const START_GOLD = 300;
-export const TEST_BATTLE_GOLD = 20;
 
 /** Invalid request from the player; the message is shown to them. */
 export class PlayerError extends Error {}

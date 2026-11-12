@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { buyItem, deployTestBattle, finishTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type MapData, type Player } from '@tactics/core';
+import { buyItem, deployTestBattle, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type MapData, type Player } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -16,6 +16,9 @@ import { ensureAdmin, tx } from './db';
 const COOKIE = 'sid';
 const SESSION_DAYS = 30;
 const MAX_FAILS = 10, FAIL_WINDOW_MS = 15 * 60_000;
+const MAX_MISSION_GOLD = 10_000;
+/** The game's day, for daily missions: midnight in Italy, whatever the server's time zone. */
+const TODAY = `(now() AT TIME ZONE 'Europe/Rome')::date`;
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -29,6 +32,8 @@ async function checkPassword(pw: string, stored: string) {
   const [salt, hash] = stored.split(':').map(h => Buffer.from(h, 'hex'));
   return timingSafeEqual(hash, await scryptAsync(pw, salt, 64));
 }
+
+const isUuid = (s: unknown): s is string => typeof s === 'string' && /^[0-9a-f-]{36}$/i.test(s);
 
 /** Request the client got wrong; the message is shown to the player. */
 class HttpError extends Error {
@@ -157,20 +162,26 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   // XP and gold come from that replay, never from what the client says happened.
   app.post('/api/battles', async c => {
     const b = await body(c);
-    // the map comes from the server's own copy, never from the client
-    const map = b.mapId === BUILTIN_MAP.id ? BUILTIN_MAP
-      : typeof b.mapId === 'string' ? (await pool.query('SELECT data FROM maps WHERE id = $1', [b.mapId])).rows[0]?.data as MapData | undefined
-      : undefined;
+    // a mission brings its own map; the map always comes from the server's copy, never from the client
+    let mapId = b.mapId, mission: { id: string; enemies: unknown } | null = null;
+    if (b.missionId !== undefined) {
+      const { rows: [m] } = isUuid(b.missionId) ? await pool.query('SELECT id, map_id, enemies FROM missions WHERE id = $1', [b.missionId]) : { rows: [] };
+      if (!m) throw new HttpError(404, 'Missione non trovata');
+      [mapId, mission] = [m.map_id, m];
+    }
+    const map = await findMap(mapId);
     if (!map) throw new HttpError(404, 'Mappa non trovata');
     const userId = c.get('userId');
     const { rows: [user] } = await pool.query('SELECT roster FROM users WHERE id = $1', [userId]);
-    const units = deployTestBattle(user.roster, map, b.deploy);
+    // checked again here: the map may have been edited since the mission was made
+    const units = deployTestBattle(user.roster, map, b.deploy, mission ? missionUnits(parseMissionEnemies(map, mission.enemies)) : undefined);
+    const missionId = mission?.id ?? null;
     const seed = randomBytes(4).readUInt32BE();
     return c.json(await tx(pool, async db => {
       // one battle at a time: starting a new one drops the old ones, finished or abandoned
       await db.query('DELETE FROM battles WHERE user_id = $1', [userId]);
-      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units) VALUES ($1, $2, $3, $4) RETURNING id',
-        [userId, seed, JSON.stringify(map), JSON.stringify(units)]);
+      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units, mission_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [userId, seed, JSON.stringify(map), JSON.stringify(units), missionId]);
       return { id: rows[0].id, seed, units };
     }));
   });
@@ -178,17 +189,38 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   app.post('/api/battles/:id/finish', async c => {
     const { actions } = await body(c);
     const id = c.req.param('id'), userId = c.get('userId');
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(404, 'Battaglia non trovata');
+    if (!isUuid(id)) throw new HttpError(404, 'Battaglia non trovata');
     return c.json(await tx(pool, async db => {
-      const { rows: [battle] } = await db.query('SELECT seed, map, units, result FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
+      const { rows: [battle] } = await db.query('SELECT seed, map, units, result, mission_id FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
       if (!battle) throw new HttpError(404, 'Battaglia non trovata: ne hai iniziata un\'altra?');
       // a retry after a lost response gets the same answer and no second payout
       if (battle.result) return battle.result;
-      const out = await mutateIn(db, userId, p => finishTestBattle(p, battle.map, battle.units, Number(battle.seed), actions));
+      const end = replayTestBattle(battle.map, battle.units, Number(battle.seed), actions);
+      const won = end.winner === 'A';
+      // only a mission won for the first time today pays; the insert is the once-a-day check
+      const { rows: [paid] } = won && battle.mission_id ? await db.query(
+        `INSERT INTO mission_wins (user_id, mission_id, day) SELECT $1, id, ${TODAY} FROM missions WHERE id = $2
+         ON CONFLICT DO NOTHING RETURNING (SELECT gold FROM missions WHERE id = $2)`, [userId, battle.mission_id]) : { rows: [] };
+      const out = paid
+        ? { ...await mutateIn(db, userId, p => payBattle(p, battle.units, end, paid.gold)), won, paid: true }
+        : { report: [], gold: 0, won, paid: false };
       await db.query('UPDATE battles SET result = $2 WHERE id = $1', [id, JSON.stringify(out)]);
       return out;
     }));
   });
+
+  /** The built-in map or a saved one, by id. */
+  const findMap = async (id: unknown): Promise<MapData | undefined> =>
+    id === BUILTIN_MAP.id ? BUILTIN_MAP
+      : typeof id === 'string' ? (await pool.query('SELECT data FROM maps WHERE id = $1', [id])).rows[0]?.data
+      : undefined;
+
+  const listMissions = async (userId: string) => (await pool.query(
+    `SELECT m.id, m.name, m.map_id AS "mapId", m.gold, m.enemies,
+       EXISTS (SELECT 1 FROM mission_wins w WHERE w.mission_id = m.id AND w.user_id = $1 AND w.day = ${TODAY}) AS done
+     FROM missions m ORDER BY m.created_at, m.id`, [userId])).rows;
+
+  app.get('/api/missions', async c => c.json(await listMissions(c.get('userId'))));
 
   const listMaps = async () => (await pool.query("SELECT data FROM maps ORDER BY data->>'name', id")).rows.map(r => r.data as MapData);
 
@@ -209,7 +241,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   app.patch('/api/admin/users/:id', async c => {
     const { admin } = await body(c);
     const id = c.req.param('id');
-    if (typeof admin !== 'boolean' || !/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(400, 'Richiesta non valida');
+    if (typeof admin !== 'boolean' || !isUuid(id)) throw new HttpError(400, 'Richiesta non valida');
     // an admin cannot demote themselves, so there is always at least one
     if (id === c.get('userId')) throw new HttpError(400, 'Non puoi togliere il ruolo a te stesso');
     const { rowCount } = await pool.query('UPDATE users SET is_admin = $2 WHERE id = $1', [id, admin]);
@@ -229,8 +261,28 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   });
 
   app.delete('/api/admin/maps/:id', async c => {
+    const { rows: [used] } = await pool.query('SELECT name FROM missions WHERE map_id = $1 LIMIT 1', [c.req.param('id')]);
+    if (used) throw new HttpError(409, `La mappa è usata dalla missione "${used.name}": elimina prima la missione`);
     await pool.query('DELETE FROM maps WHERE id = $1', [c.req.param('id')]);
     return c.json(await listMaps());
+  });
+
+  app.post('/api/admin/missions', async c => {
+    const b = await body(c);
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    if (!name || name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
+    if (!Number.isInteger(b.gold) || b.gold < 0 || b.gold > MAX_MISSION_GOLD) throw new HttpError(400, `L'oro deve essere un intero tra 0 e ${MAX_MISSION_GOLD}`);
+    const map = await findMap(b.mapId);
+    if (!map) throw new HttpError(400, 'Mappa non trovata');
+    const enemies = parseMissionEnemies(map, b.enemies);
+    await pool.query('INSERT INTO missions (name, map_id, gold, enemies) VALUES ($1, $2, $3, $4)', [name, b.mapId, b.gold, JSON.stringify(enemies)]);
+    return c.json(await listMissions(c.get('userId')));
+  });
+
+  app.delete('/api/admin/missions/:id', async c => {
+    const id = c.req.param('id');
+    if (isUuid(id)) await pool.query('DELETE FROM missions WHERE id = $1', [id]);
+    return c.json(await listMissions(c.get('userId')));
   });
 
   app.all('/api/*', c => c.json({ error: 'Non trovato' }, 404));

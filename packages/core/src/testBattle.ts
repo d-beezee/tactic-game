@@ -1,9 +1,10 @@
 import { planTurn } from './ai';
 import { activeUnit, apply, createBattle, type BattleState } from './battle';
-import { samePos, type MapData, type Pos } from './map';
-import { PlayerError, TEST_BATTLE_GOLD, type Player } from './player';
+import { CLASSES } from './classes';
+import { isWalkable, key, samePos, type MapData, type Pos } from './map';
+import { PlayerError, type Player } from './player';
 import { applyBattleXp, classLevel, unitFromRoster, type RosterUnit } from './roster';
-import { createUnit, type Unit } from './units';
+import { createUnit, MAX_CLASS_LEVEL, type Unit } from './units';
 
 const ENEMY_CLASSES = ['warrior', 'archer', 'cleric'];
 const ENEMY_NAMES = ['Grosk', 'Vespa', 'Mordo', 'Ruggine', 'Sterpo', 'Nebbia', 'Ghigno', 'Corvo'];
@@ -16,11 +17,35 @@ export function testEnemies(roster: RosterUnit[], map: MapData): Unit[] {
     createUnit(`enemy${i}`, ENEMY_NAMES[i % ENEMY_NAMES.length], 'B', ENEMY_CLASSES[i % ENEMY_CLASSES.length], p, 'N', level));
 }
 
+/** An enemy a daily mission places on its map. */
+export interface MissionEnemy { classId: string; level: number; pos: Pos }
+export const MAX_MISSION_ENEMIES = 12;
+
+/** Untrusted enemy list of a mission, checked against its map. Throws PlayerError with the first problem. */
+export function parseMissionEnemies(map: MapData, data: unknown): MissionEnemy[] {
+  if (!Array.isArray(data) || data.length < 1 || data.length > MAX_MISSION_ENEMIES) throw new PlayerError(`Servono da 1 a ${MAX_MISSION_ENEMIES} nemici`);
+  const seen = new Set<string>();
+  return data.map((e: Partial<MissionEnemy>, i) => {
+    const pos = e?.pos, n = i + 1;
+    if (typeof e?.classId !== 'string' || !Object.hasOwn(CLASSES, e.classId)) throw new PlayerError(`Nemico ${n}: classe non valida`);
+    if (!Number.isInteger(e.level) || e.level! < 1 || e.level! > MAX_CLASS_LEVEL) throw new PlayerError(`Nemico ${n}: il livello va da 1 a ${MAX_CLASS_LEVEL}`);
+    if (!Number.isInteger(pos?.x) || !Number.isInteger(pos?.y) || !isWalkable(map, pos!)) throw new PlayerError(`Nemico ${n}: casella non calpestabile`);
+    if (map.spawns.A.some(s => samePos(s, pos!))) throw new PlayerError(`Nemico ${n}: è su una partenza del giocatore`);
+    if (seen.has(key(pos!))) throw new PlayerError(`Nemico ${n}: casella già occupata`);
+    seen.add(key(pos!));
+    return { classId: e.classId, level: e.level!, pos: { x: pos!.x, y: pos!.y } };
+  });
+}
+
+/** Battle units for a mission's enemies. */
+export const missionUnits = (enemies: MissionEnemy[]): Unit[] => enemies.map((e, i) =>
+  createUnit(`enemy${i}`, ENEMY_NAMES[i % ENEMY_NAMES.length], 'B', e.classId, e.pos, 'N', e.level));
+
 /**
- * Starting units of a test battle: the player's deployed units plus the enemies.
+ * Starting units of a battle: the player's deployed units plus the enemies (a mission's, or the test battle's).
  * `deploy` is untrusted: [{ id, pos }], each unit of the roster once, on the player's spawn cells.
  */
-export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unknown): Unit[] {
+export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unknown, enemies = testEnemies(roster, map)): Unit[] {
   if (!Array.isArray(deploy)) throw new PlayerError('Schieramento non valido');
   const team = deploy.map((d: { id?: unknown; pos?: Pos }) => {
     const r = roster.find(u => u.id === d?.id);
@@ -29,7 +54,7 @@ export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unk
     return unitFromRoster(r, PLAYER, { x: pos!.x, y: pos!.y }, 'S');
   });
   if (new Set(team.map(u => u.id)).size !== team.length) throw new PlayerError('Schieramento non valido');
-  const units = [...team, ...testEnemies(roster, map)];
+  const units = [...team, ...enemies];
   createBattle(map, units, 0); // checks cells and deploy count
   return units;
 }
@@ -61,12 +86,9 @@ export function replayTestBattle(map: MapData, units: Unit[], seed: number, acti
   return s;
 }
 
-/** Replays a test battle and pays out: XP to the class each unit fought as, gold on victory. */
-export function finishTestBattle(p: Player, map: MapData, units: Unit[], seed: number, actions: unknown) {
-  const end = replayTestBattle(map, units, seed, actions);
+/** Pays a won battle: XP to the class each unit fought as, plus `gold`. Only daily missions pay; test battles never do. */
+export function payBattle(p: Player, units: Unit[], end: BattleState, gold: number) {
   const used = units.filter(u => u.team === PLAYER).map(u => ({ id: u.id, classId: u.classId }));
   const { roster, report } = applyBattleXp(p.roster, used, end.xp);
-  const won = end.winner === PLAYER;
-  const gold = won ? TEST_BATTLE_GOLD : 0;
-  return { player: { ...p, roster, gold: p.gold + gold }, report, gold, won };
+  return { player: { ...p, roster, gold: p.gold + gold }, report, gold };
 }

@@ -7,10 +7,11 @@ Gioco strategico a turni su griglia isometrica a più livelli di altezza. Si gio
 - un menu iniziale;
 - una caserma dove vedi il roster, cambi classe alle unità e le equipaggi;
 - un negozio dove compri armi e armature con l'oro;
-- una battaglia di prova contro l'IA, su una mappa a scelta, con schieramento iniziale tramite drag and drop;
+- missioni giornaliere create dall'admin: le uniche battaglie che danno XP e oro;
+- una battaglia di prova contro l'IA, su una mappa a scelta, con schieramento iniziale tramite drag and drop, che non dà ricompense;
 - un editor di mappe.
 
-Missioni e PvP non ci sono ancora.
+La campagna a capitoli e il PvP non ci sono ancora.
 
 ## Avvio
 
@@ -67,7 +68,7 @@ packages/core/      logica di gioco pura: nessuna dipendenza grafica, determinis
   src/roster.ts       unità del giocatore, progressione e XP
   src/items.ts        catalogo di armi e armature
   src/player.ts       stato del giocatore: oro, inventario, acquisti, equipaggiamento
-  src/testBattle.ts   battaglia di prova: nemici, schieramento, replay delle azioni e ricompense
+  src/testBattle.ts   battaglie contro l'IA: nemici, schieramento, replay delle azioni e ricompense
   src/pathfinding.ts  caselle raggiungibili (movimento, salto, ostacoli)
   src/combat.ts       gittata, danno, lato colpito
   src/initiative.ts   ordine dei turni
@@ -110,7 +111,7 @@ La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo sta
 ## Progressione
 
 - **Livelli:** ogni classe ha il suo livello, da 1 a 8. Le statistiche dipendono dalla classe attiva e dal suo livello: +5% per livello su PV, attacco, difesa, magia e velocità. Movimento e salto non crescono.
-- **XP:** va alla classe attiva. Ogni azione dà 10 XP, un'eliminazione +20, la vittoria +20 a chi è ancora in piedi. Il livello 2 costa 100 XP, e ogni livello successivo costa 50 XP in più del precedente (livello 4 = 450 XP totali, livello 8 = 1750).
+- **XP:** va alla classe attiva, solo da una missione giornaliera vinta. Ogni azione dà 10 XP, un'eliminazione +20, la vittoria +20 a chi è ancora in piedi. Il livello 2 costa 100 XP, e ogni livello successivo costa 50 XP in più del precedente (livello 4 = 450 XP totali, livello 8 = 1750).
 - **Classi avanzate:** si sbloccano con i livelli delle altre classi.
   - Paladino: Guerriero 4 + Chierico 2.
   - Ranger: Arciere 4 + Guerriero 2.
@@ -132,18 +133,25 @@ Nella battaglia di prova i nemici hanno il livello medio delle classi attive del
 
 XP e oro li decide il server, non il client.
 
-1. A fine schieramento il client manda l'id della mappa e le posizioni a `POST /api/battles`. Il server prende la mappa dalla sua copia (quella di base o una salvata), controlla lo schieramento, costruisce le unità dal roster salvato, sceglie il seme casuale e salva tutto. Risponde con id, seme e unità.
+1. A fine schieramento il client manda le posizioni e l'id della mappa (battaglia di prova) o della missione a `POST /api/battles`. Il server prende la mappa dalla sua copia (quella di base o una salvata), controlla lo schieramento, costruisce le unità dal roster salvato, sceglie il seme casuale e salva tutto. Risponde con id, seme e unità.
 2. Il client gioca la battaglia in locale con quei dati e registra solo le azioni del giocatore.
 3. A fine battaglia il client manda le azioni a `POST /api/battles/:id/finish`. Il server rigioca la battaglia: applica le azioni del giocatore con `apply` e calcola i turni nemici con la stessa IA. Se un'azione non è valida, o se la lista finisce prima che ci sia un vincitore, rifiuta tutto.
-4. XP e oro vengono dallo stato finale del replay. Il risultato è salvato sulla battaglia: una seconda richiesta con lo stesso id riceve la stessa risposta e non paga due volte.
+4. Paga solo una missione giornaliera vinta per la prima volta nella giornata: XP dallo stato finale del replay, oro dalla missione. La battaglia di prova, una missione persa o una missione già vinta oggi non danno niente. Il risultato è salvato sulla battaglia: una seconda richiesta con lo stesso id riceve la stessa risposta e non paga due volte.
 
 Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/testBattle.ts`.
+
+## Missioni giornaliere
+
+- **Creazione:** dal menu "Gestisci missioni" l'admin crea una missione con nome, mappa (di base o salvata), oro (da 0 a 10000) e nemici, e può eliminarla. Una mappa usata da una missione non si può eliminare.
+- **Nemici:** da 1 a 12, ognuno con classe (anche avanzata), livello da 1 a 8 e casella di partenza. Si piazzano toccando le caselle di una griglia della mappa. Una casella deve essere calpestabile e non può essere una partenza del giocatore. Alla scelta della mappa la griglia propone un nemico per ogni partenza nemica. Il numero di nemici non dipende da `maxDeploy`, che limita solo il giocatore.
+- **Gioco:** dal menu "Missioni giornaliere" ogni giocatore vede tutte le missioni. Una missione vinta paga XP e l'oro indicato, una volta al giorno per giocatore. Il giorno cambia a mezzanotte, ora italiana (`Europe/Rome`). Una missione persa si può rigiocare.
+- **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/testBattle.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
 
 ## Account, oro ed equipaggiamento
 
 - **Account:** email e password. Chi si registra da un browser in cui aveva già giocato porta con sé il roster salvato lì.
 - **Admin:** il primo account registrato è l'admin. Se esistono account ma nessuno è admin, lo diventa il più vecchio: il controllo gira a ogni avvio del server e dopo ogni registrazione. Dal menu "Utenti" un admin può dare o togliere il ruolo agli altri account, ma non può toglierlo a sé stesso: così ne resta sempre almeno uno. Solo gli admin vedono l'editor mappe e possono salvare o eliminare mappe. Tutti i giocatori combattono sulle mappe salvate.
-- **Oro:** si parte con 300. Una vittoria nella battaglia di prova ne dà 20.
+- **Oro:** si parte con 300. Lo danno solo le missioni giornaliere.
 - **Negozio:** vende armi e armature. Ogni acquisto aggiunge una copia all'inventario.
 - **Equipaggiamento:** ogni unità ha due slot, arma e armatura. Una copia di un oggetto può stare su una sola unità alla volta. I bonus sono fissi e si sommano alle statistiche dopo la crescita di livello e prima della passiva.
 
@@ -201,5 +209,5 @@ Dal menu, "Editor mappe". La voce compare solo all'admin.
 
 ## Roadmap
 
-1. Missioni: campagna a capitoli e missioni giornaliere create dall'admin, con ricompense in denaro.
+1. Campagna a capitoli.
 2. PvP live a turni con livelli normalizzati e server autoritativo.

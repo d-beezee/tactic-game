@@ -1,4 +1,4 @@
-import type { BattleAction, MapData, Player, Pos, Unit, UnitChange, XpReport } from '@tactics/core';
+import type { BattleAction, MapData, MissionEnemy, Player, Pos, Unit, UnitChange, XpReport } from '@tactics/core';
 
 export interface Account extends Player {
   email: string;
@@ -7,6 +7,9 @@ export interface Account extends Player {
 }
 
 export interface User { id: string; email: string; admin: boolean; createdAt: string }
+
+/** A daily mission; done = already won today by this player. */
+export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; done: boolean }
 
 export class ApiError extends Error {
   /** status 0 = the server could not be reached */
@@ -47,8 +50,13 @@ export const api = {
   updateUnit: (id: string, change: UnitChange) => call<Player>('PATCH', `/units/${encodeURIComponent(id)}`, change),
   buy: (itemId: string) => call<Player>('POST', '/shop/buy', { itemId }),
   /** The server picks the seed and builds the starting units from its own copy of the roster. */
-  battleStart: (mapId: string, deploy: { id: string; pos: Pos }[]) => call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { mapId, deploy }),
+  /** A test battle names its map, a mission its id. */
+  battleStart: (target: { mapId: string } | { missionId: string }, deploy: { id: string; pos: Pos }[]) =>
+    call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { ...target, deploy }),
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
-    call<{ player: Player; report: XpReport[]; gold: number }>('POST', `/battles/${id}/finish`, { actions }),
+    call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean }>('POST', `/battles/${id}/finish`, { actions }),
+  missions: () => call<Mission[]>('GET', '/missions'),
+  createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[] }) => call<Mission[]>('POST', '/admin/missions', m),
+  deleteMission: (id: string) => call<Mission[]>('DELETE', `/admin/missions/${id}`),
 };

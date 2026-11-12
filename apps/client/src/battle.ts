@@ -1,16 +1,20 @@
 import Phaser from 'phaser';
-import { CLASSES, createBattle, testEnemies, validateMap, type MapData, type RosterUnit, type Unit } from '@tactics/core';
-import { api, ApiError } from './api';
+import { CLASSES, createBattle, missionUnits, testEnemies, validateMap, type MapData, type RosterUnit, type Unit } from '@tactics/core';
+import { api, ApiError, type Mission } from './api';
 import { BattleScene } from './BattleScene';
 import { Controller } from './controller';
 import { Deploy } from './deploy';
 import { hud, mountRotate } from './hud';
 
-/** Test battle: deploy roster units on the chosen map, then fight an AI team that fills the enemy spawns. */
-export function startTestBattle(roster: RosterUnit[], map: MapData) {
+/**
+ * Deploy roster units on the map, then fight an AI team that fills the enemy spawns.
+ * With a mission it is a daily mission, with its own enemies, which can pay; without, a test battle, which never does.
+ */
+export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mission) {
+  const missionId = mission?.id;
   const errors = validateMap(map);
   if (errors.length) throw new Error(`map invalid: ${errors.join('; ')}`);
-  const enemies = testEnemies(roster, map);
+  const enemies = mission ? missionUnits(mission.enemies) : testEnemies(roster, map);
 
   document.getElementById('hud')!.hidden = false;
   const scene = new BattleScene(map, enemies, s => {
@@ -24,7 +28,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
       hud.banner('Preparazione della battaglia…');
       let battle: Awaited<ReturnType<typeof api.battleStart>>;
       try {
-        battle = await api.battleStart(map.id, team.map(u => ({ id: u.id, pos: u.pos })));
+        battle = await api.battleStart(missionId ? { missionId } : { mapId: map.id }, team.map(u => ({ id: u.id, pos: u.pos })));
       } catch (e) {
         hud.banner(`Battaglia non avviata: ${(e as Error).message}`);
         return hud.buttons([
@@ -37,7 +41,12 @@ export function startTestBattle(roster: RosterUnit[], map: MapData) {
         // the actions exist only here: retry before giving up, or a network blip loses the battle
         for (let attempt = 1; ; attempt++) {
           try {
-            const { report, gold } = await api.battleFinish(battle.id, actions);
+            const { report, gold, won, paid } = await api.battleFinish(battle.id, actions);
+            if (!paid) return [
+              !missionId ? 'Battaglia di prova: niente XP né oro. Per quelli ci sono le missioni giornaliere.'
+                : won ? 'Missione già vinta oggi: niente ricompensa. Torna domani.'
+                : 'Missione fallita: niente ricompensa. Puoi riprovare.',
+            ];
             const lines = report.map(r => `${r.name}, ${CLASSES[r.classId].name}: +${r.gained} XP${r.to > r.from ? `, livello ${r.to}!` : ''}`);
             return gold ? [...lines, `+${gold} oro`] : lines;
           } catch (e) {

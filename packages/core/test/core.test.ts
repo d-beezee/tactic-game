@@ -224,7 +224,7 @@ describe('player', () => {
   });
 });
 
-import { deployTestBattle, finishTestBattle, replayTestBattle, TEST_BATTLE_GOLD, type BattleAction } from '../src';
+import { deployTestBattle, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, type BattleAction } from '../src';
 describe('test battle on the server', () => {
   const map = demo as MapData;
   const p = newPlayer();
@@ -258,10 +258,27 @@ describe('test battle on the server', () => {
   it('replay of the player actions gives the same outcome and pays from it', () => {
     const { end, log } = play(7);
     expect(replayTestBattle(map, units, 7, log).xp).toEqual(end.xp);
-    const out = finishTestBattle(p, map, units, 7, log);
-    expect(out.won).toBe(end.winner === 'A');
-    expect(out.player.gold).toBe(START_GOLD + (out.won ? TEST_BATTLE_GOLD : 0));
+    const out = payBattle(p, units, replayTestBattle(map, units, 7, log), 50);
+    expect(out.player.gold).toBe(START_GOLD + 50);
     expect(out.report.map(r => [r.id, r.gained])).toEqual(deploy.map(d => [d.id, end.xp[d.id]]).filter(([, xp]) => xp));
+  });
+
+  it('mission enemies are checked against the map and can outnumber maxDeploy', () => {
+    const free = [] as { x: number; y: number }[];
+    for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++)
+      if (map.terrain[y][x] !== 'x' && map.terrain[y][x] !== 'w' && !map.spawns.A.some(s => s.x === x && s.y === y)) free.push({ x, y });
+    const many = free.slice(0, map.maxDeploy + 2).map(pos => ({ classId: 'sage', level: 5, pos }));
+    const enemies = parseMissionEnemies(map, many);
+    const units = deployTestBattle(p.roster, map, deploy, missionUnits(enemies));
+    expect(units.filter(u => u.team === 'B').map(u => [u.classId, u.level])).toEqual(many.map(() => ['sage', 5]));
+    const bad = (e: unknown) => expect(() => parseMissionEnemies(map, e)).toThrow(PlayerError);
+    bad([]);
+    bad([{ ...many[0], classId: 'constructor' }]);
+    bad([{ ...many[0], level: 9 }]);
+    bad([{ ...many[0], level: 0 }]);
+    bad([{ ...many[0], pos: map.spawns.A[0] }]);
+    bad([{ ...many[0], pos: { x: -1, y: 0 } }]);
+    bad([many[0], many[0]]);
   });
 
   it('rejects unfinished, illegal and malformed action lists', () => {

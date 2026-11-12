@@ -1,8 +1,8 @@
 import {
-  CLASSES, DEFAULT_ROSTER, ITEMS, MAX_CLASS_LEVEL, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
-  unlockedPassives, xpToReach, type ItemDef, type MapData, type Player, type RosterUnit, type Stats, type UnitChange,
+  CLASSES, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
+  unlockedPassives, xpToReach, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
-import { api, ApiError, type Account, type User } from './api';
+import { api, ApiError, type Account, type Mission, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
 import { play } from './sfx';
 import { reducedMotion, saveSettings, settings } from './theme';
@@ -58,7 +58,17 @@ const leaveMenu = () => {
   document.getElementById('backdrop')!.hidden = true; // it sits above the game canvas
 };
 
-export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) => void; editor: () => void }) {
+/** Starting enemies for a new mission: the map's enemy spawns, base classes in turn, level 1. */
+const defaultEnemies = (m: MapData): MissionEnemy[] =>
+  m.spawns.B.slice(0, m.maxDeploy).map((pos, i) => ({ classId: ['warrior', 'archer', 'cleric'][i % 3], level: 1, pos: { ...pos } }));
+
+/** "3 nemici, livello 2–5" */
+const enemySummary = (enemies: MissionEnemy[]) => {
+  const lv = enemies.map(e => e.level), lo = Math.min(...lv), hi = Math.max(...lv);
+  return `${enemies.length === 1 ? '1 nemico' : `${enemies.length} nemici`}, livello ${lo === hi ? lo : `${lo}–${hi}`}`;
+};
+
+export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void; editor: () => void }) {
   const root = document.getElementById('menu')!;
   let player: Account;
   let selected = '';
@@ -148,11 +158,10 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
         el('p', { className: 'account' }, `${player.email}, `, el('b', { textContent: `${player.gold} oro` })),
         el('button', { className: 'menu-btn', textContent: 'Caserma', onclick: barracks }),
         el('button', { className: 'menu-btn', textContent: 'Negozio', onclick: shop }),
-        el('button', {
-          className: 'menu-btn primary', textContent: 'Battaglia di prova',
-          onclick: () => void pickMap(),
-        }),
+        el('button', { className: 'menu-btn primary', textContent: 'Missioni giornaliere', onclick: () => void missions() }),
+        el('button', { className: 'menu-btn', textContent: 'Battaglia di prova', onclick: () => void pickMap() }),
         ...(player.admin ? [
+          el('button', { className: 'menu-btn', textContent: 'Gestisci missioni', onclick: () => void manageMissions(api.missions()) }),
           el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { leaveMenu(); go.editor(); } }),
           el('button', { className: 'menu-btn', textContent: 'Utenti', onclick: () => void users(api.users()) }),
         ] : []),
@@ -175,7 +184,131 @@ export function showMenu(go: { testBattle: (roster: RosterUnit[], map: MapData) 
     );
   };
 
-  const fight = (map: MapData) => { leaveMenu(); go.testBattle(player.roster, map); };
+  const fight = (map: MapData, mission?: Mission) => { leaveMenu(); go.testBattle(player.roster, map, mission); };
+
+  /** Loads missions and maps together; the maps are needed to start a mission and to name its map. */
+  const loadMissions = async (request: Promise<Mission[]>, shown: Mission[]) => {
+    try {
+      const [list] = await Promise.all([request, loadMaps(player.admin)]);
+      error = '';
+      return list;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return null;
+      error = (e as Error).message;
+      return shown;
+    }
+  };
+  const mapName = (id: string) => allMaps().find(m => m.id === id)?.name;
+
+  /** Today's daily missions: each pays XP and gold once a day, on a win. */
+  const missions = async () => {
+    const list = await loadMissions(api.missions(), []);
+    if (!list) return auth();
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: 'Missioni giornaliere' }),
+        ),
+        errorLine(),
+        el('p', { className: 'hint wide', textContent: 'Ogni missione vinta dà XP e oro, una volta al giorno. Si riparte a mezzanotte.' }),
+        el('div', { className: 'map-list' },
+          ...list.map(m => {
+            const map = allMaps().find(x => x.id === m.mapId);
+            return el('button', { className: 'roster-item', disabled: m.done || !map, onclick: () => map && fight(map, m) },
+              el('span', { className: 'rn', textContent: m.name }),
+              el('span', { className: 'rc', textContent: m.done ? 'Vinta oggi · torna domani' : `+${m.gold} oro e XP · ${map?.name ?? 'mappa mancante'}` }),
+              el('span', { className: 'rc', textContent: enemySummary(m.enemies) }),
+            );
+          }),
+          ...(list.length ? [] : [el('p', { className: 'hint', textContent: 'Oggi non ci sono missioni. Allenati con la battaglia di prova.' })]),
+        ),
+      ),
+    );
+  };
+
+  /** Admin only: create and delete daily missions. The draft survives the redraw after a failed create. */
+  let draft: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; classId: string; level: number } | null = null;
+  const manageMissions = async (request: Promise<Mission[]>, shown: Mission[] = []) => {
+    const list = await loadMissions(request, shown);
+    if (!list) return auth();
+    const maps = allMaps();
+    if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = { name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), classId: 'warrior', level: 1 };
+    const d = draft;
+    const current = () => maps.find(m => m.id === d.mapId)!;
+
+    const name = el('input', { className: 'field', placeholder: 'Nome della missione', ariaLabel: 'Nome della missione', maxLength: 60, required: true, value: d.name, oninput: () => { d.name = name.value; } });
+    const map = el('select', { className: 'field', ariaLabel: 'Mappa', onchange: () => { d.mapId = map.value; d.enemies = defaultEnemies(current()); drawGrid(); } },
+      ...maps.map(m => el('option', { value: m.id, textContent: m.name, selected: m.id === d.mapId })));
+    const gold = el('input', { className: 'field', type: 'number', min: '0', max: '10000', step: '1', value: String(d.gold), ariaLabel: 'Oro', oninput: () => { d.gold = Number(gold.value); } });
+    const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } },
+      ...Object.values(CLASSES).map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
+    const lvl = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.level), ariaLabel: 'Livello del prossimo nemico',
+      oninput: () => { d.level = Number(lvl.value); } });
+    const count = el('span', { className: 'hint' });
+    const grid = el('div', { className: 'enemy-grid' });
+
+    /** One button per cell: an empty walkable cell gets a new enemy, an enemy's cell loses it. */
+    const drawGrid = () => {
+      const m = current();
+      grid.style.gridTemplateColumns = `repeat(${m.width}, 1fr)`;
+      grid.replaceChildren(...m.heights.flatMap((row, y) => row.map((h, x) => {
+        const i = d.enemies.findIndex(e => e.pos.x === x && e.pos.y === y);
+        const foe = d.enemies[i];
+        const mine = m.spawns.A.some(p => p.x === x && p.y === y);
+        const b = el('button', {
+          type: 'button', className: `cell t-${m.terrain[y][x]}${mine ? ' mine' : ''}${foe ? ' foe' : ''}`,
+          disabled: mine || !isWalkable(m, { x, y }),
+          title: foe ? `${CLASSES[foe.classId].name}, livello ${foe.level}` : mine ? 'Partenza del giocatore' : `Altezza ${h}`,
+          textContent: foe ? `${CLASSES[foe.classId].name[0]}${foe.level}` : '',
+          onclick: () => {
+            if (foe) d.enemies.splice(i, 1);
+            else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: d.classId, level: d.level, pos: { x, y } });
+            drawGrid();
+          },
+        });
+        b.style.setProperty('--h', String(h));
+        return b;
+      })));
+      count.textContent = `${d.enemies.length === 1 ? '1 nemico' : `${d.enemies.length} nemici`}, massimo ${MAX_MISSION_ENEMIES}`;
+    };
+    drawGrid();
+
+    const form = el('form', { className: 'mission-form' },
+      name, map, el('label', {}, gold, ' oro'),
+      el('div', { className: 'enemy-editor' },
+        el('p', { className: 'hint', textContent: 'Tocca una casella per piazzare un nemico, toccalo di nuovo per toglierlo. In blu le partenze del giocatore.' }),
+        el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), cls, el('label', {}, 'livello ', lvl), count),
+        grid,
+      ),
+      el('button', { className: 'menu-btn primary', type: 'submit', textContent: 'Crea missione' }),
+    );
+    form.onsubmit = e => {
+      e.preventDefault();
+      const created = api.createMission({ name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies }).then(l => { draft = null; return l; });
+      void manageMissions(created, list);
+    };
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: `Gestisci missioni · ${list.length}` }),
+        ),
+        errorLine(),
+        form,
+        el('div', { className: 'user-list' },
+          ...list.map(m => el('div', { className: 'user-row' },
+            el('span', { className: 'rn', textContent: m.name }),
+            el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}` }),
+            el('button', {
+              className: 'back', textContent: 'Elimina',
+              onclick: () => confirm(`Eliminare la missione "${m.name}"?`) && void manageMissions(api.deleteMission(m.id), list),
+            }),
+          )),
+        ),
+      ),
+    );
+  };
 
   /** Admin only: list of accounts, with a button to give or take the admin role. */
   const users = async (request: Promise<User[]>, shown: User[] = []) => {

@@ -211,7 +211,8 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
 .roster { display: flex; flex-direction: column; gap: 8px; }
 .roster-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 58px; padding: 0 14px 0 18px; border: 0; border-left: 3px solid var(--team-a);
   color: var(--text); font: inherit; cursor: pointer; text-align: left; box-shadow: none; }
-.roster-item:hover { background: #2b211a; }
+.roster-item:not(:disabled):hover { background: #2b211a; }
+.roster-item:disabled { opacity: .6; cursor: default; }
 .roster-item .rn { font: 800 19px var(--ui); } .roster-item .rc { color: var(--dim); font-size: 15px; }
 .roster-item.sel { border-left-color: var(--brass); }
 .roster-item.sel .rc { color: #e6c98a; }
@@ -252,10 +253,10 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
 /* ---------- account, shop, users ---------- */
 .auth { justify-items: stretch; }
 .auth .title { justify-self: start; }
-.auth input { min-width: 300px; min-height: 54px; padding: 0 14px; border: 0; border-radius: 2px; background: rgba(11, 8, 6, .85); color: var(--text); font-size: 17px;
+:is(.auth input, .field) { min-width: 300px; min-height: 54px; padding: 0 14px; border: 0; border-radius: 2px; background: rgba(11, 8, 6, .85); color: var(--text); font-size: 17px;
   box-shadow: inset 0 0 0 1px var(--line); }
-.auth input:focus { box-shadow: inset 0 0 0 2px var(--brass); outline: none; }
-.auth input::placeholder { color: #8a7c66; }
+:is(.auth input, .field):focus { box-shadow: inset 0 0 0 2px var(--brass); outline: none; }
+:is(.auth input, .field)::placeholder { color: #8a7c66; }
 .auth .menu-btn { text-align: center; padding: 0 22px; }
 .auth .menu-btn::before { display: none; }
 .auth .or { margin: 6px 0 -6px; }
@@ -280,6 +281,23 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
 .class-card:disabled .price { color: var(--dim); }
 .map-list { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .map-list .roster-item { flex-direction: column; align-items: flex-start; justify-content: center; min-height: 76px; }
+.mission-form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.mission-form .field { min-width: 0; flex: 1 1 220px; }
+.mission-form label { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+.mission-form input[type=number] { flex: none; width: 120px; }
+.mission-form select.field { min-height: 54px; }
+.enemy-editor { flex: 1 1 100%; display: grid; gap: 10px; }
+.brush { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.brush label { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+.brush .field { flex: none; width: auto; }
+.enemy-grid { display: grid; gap: 2px; width: 100%; max-width: 560px; }
+.enemy-grid .cell { aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 2px; font: 800 13px var(--ui); color: #fff;
+  filter: brightness(calc(.6 + var(--h, 0) * .06)); cursor: pointer; }
+.enemy-grid .cell:disabled { cursor: default; }
+.cell.t-g { background: #5a8f3a; } .cell.t-d { background: #8a6038; } .cell.t-s { background: #7b756c; } .cell.t-w { background: #2b6a8c; } .cell.t-x { background: #1f1915; }
+.cell.mine { box-shadow: inset 0 0 0 3px var(--team-a); }
+.cell.foe { background: var(--team-b); filter: none; text-shadow: 0 1px 0 #000; }
+.barracks > .hint.wide { grid-column: 1 / -1; }
 .user-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
 .user-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; min-height: 58px; padding: 6px 14px; }
 .user-row .rn { font: 800 19px var(--ui); overflow-wrap: anywhere; } .user-row .rc { color: var(--dim); font-size: 15px; margin-right: auto; }
@@ -290,7 +308,7 @@ body.editing #rotate { top: 14px; left: 14px; right: auto; }
   .roster { flex-direction: row; overflow-x: auto; padding: 4px 4px 12px; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
   .roster-item { flex: none; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 140px; padding: 8px 14px; }
   .detail { padding: 16px; }
-  .auth input { min-width: 0; }
+  :is(.auth input, .field) { min-width: 0; }
 }
 
 /* ---------- editor ---------- */

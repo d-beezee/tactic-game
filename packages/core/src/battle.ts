@@ -47,10 +47,10 @@ export function createBattle(map: MapData, units: Unit[], seed: number): BattleS
     if (!isWalkable(map, u.pos) || cells.has(key(u.pos))) throw new BattleError(`bad position for ${u.id}`);
     cells.add(key(u.pos));
   }
-  for (const team of ['A', 'B'] as const) {
-    const n = units.filter(u => u.team === team).length;
-    if (n === 0 || n > map.maxDeploy) throw new BattleError(`team ${team} must deploy 1..${map.maxDeploy} units`);
-  }
+  // maxDeploy bounds the player only: a mission may field more enemies
+  const n = (team: string) => units.filter(u => u.team === team).length;
+  if (n('A') === 0 || n('A') > map.maxDeploy) throw new BattleError(`team A must deploy 1..${map.maxDeploy} units`);
+  if (n('B') === 0) throw new BattleError('team B has no units');
   const init = rollInitiative(units, seed);
   const xp = Object.fromEntries(units.map(u => [u.id, 0]));
   return { map, units, order: init.order, turn: 0, round: 1, moved: false, acted: false, seed: init.seed, winner: null, events: [], xp };
