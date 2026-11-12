@@ -1,4 +1,4 @@
-import type { BattleAction, MapData, MissionEnemy, Player, Pos, Unit, UnitChange, XpReport } from '@tactics/core';
+import type { BattleAction, MapData, MissionEnemy, Player, Pos, Recruit, Unit, UnitChange, XpReport } from '@tactics/core';
 
 export interface Account extends Player {
   email: string;
@@ -24,7 +24,7 @@ export interface PvpState {
 }
 
 /** A daily mission; done = already won today by this player; trackId = its own music instead of the battle one. */
-export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; trackId: string | null; done: boolean }
+export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; recruit: Recruit | null; trackId: string | null; done: boolean }
 
 /** A piece of background music: Strudel code. */
 export interface Track { id: string; name: string; code: string }
@@ -87,7 +87,7 @@ export const api = {
   pvpAction: (id: string, index: number, action: BattleAction) => call<unknown>('POST', `/pvp/${id}/actions`, { index, action }),
   pvpLeave: (id: string) => call<unknown>('POST', `/pvp/${id}/leave`),
   missions: () => call<Mission[]>('GET', '/missions'),
-  createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; trackId: string | null }) => call<Mission[]>('POST', '/admin/missions', m),
+  createMission: (m: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; recruit: Recruit | null; trackId: string | null }) => call<Mission[]>('POST', '/admin/missions', m),
   deleteMission: (id: string) => call<Mission[]>('DELETE', `/admin/missions/${id}`),
   music: () => call<Music>('GET', '/music'),
   createTrack: (t: { name: string; code: string }) => call<Music>('POST', '/admin/tracks', t),

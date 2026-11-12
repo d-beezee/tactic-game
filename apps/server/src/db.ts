@@ -146,6 +146,8 @@ $: s("bd ~ bd [~ bd], ~ sd ~ sd, hh*8")
      RETURNING id, name
    )
    INSERT INTO music_slots SELECT CASE name WHEN 'Rovine al tramonto' THEN 'menu' ELSE 'battle' END, id FROM t;`,
+  // a unit the mission adds to the roster on the player's first win: { name, raceId, classId }, checked by parseRecruit
+  `ALTER TABLE missions ADD COLUMN recruit jsonb;`,
 ];
 
 /**

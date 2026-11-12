@@ -1,6 +1,7 @@
 import { CLASSES } from './classes';
 import type { Equip } from './items';
 import type { Dir, Pos, Team } from './map';
+import { allowedRaces, DEFAULT_RACE, RACES } from './races';
 import { createUnit, MAX_CLASS_LEVEL, type Unit } from './units';
 
 /** A unit owned by the player, outside battle. */
@@ -9,6 +10,8 @@ export interface RosterUnit {
   name: string;
   /** active class */
   classId: string;
+  /** fixed for life; DEFAULT_RACE if missing (saved before races existed) */
+  raceId?: string;
   /** total XP earned in each class */
   xp: Record<string, number>;
   /** class id whose passive is equipped (1 slot) */
@@ -38,22 +41,26 @@ export function missingRequirements(r: RosterUnit, classId: string): { classId: 
     .map(([c, level]) => ({ classId: c, level }));
 }
 
-export const isUnlocked = (r: RosterUnit, classId: string) => !!CLASSES[classId] && missingRequirements(r, classId).length === 0;
+export const raceOf = (r: { raceId?: string }) => r.raceId ?? DEFAULT_RACE;
+
+/** The class exists, the unit's race can take it, and its requirements are met. */
+export const isUnlocked = (r: RosterUnit, classId: string) =>
+  !!CLASSES[classId] && allowedRaces(classId).includes(raceOf(r)) && missingRequirements(r, classId).length === 0;
 
 export const unlockedPassives = (r: RosterUnit) => Object.keys(CLASSES).filter(c => classLevel(r, c) >= PASSIVE_LEVEL);
 
 export function unitFromRoster(r: RosterUnit, team: Team, pos: Pos, facing: Dir): Unit {
-  return createUnit(r.id, r.name, team, r.classId, pos, facing, classLevel(r, r.classId), r.passive, r.equip);
+  return createUnit(r.id, r.name, team, r.classId, pos, facing, classLevel(r, r.classId), r.passive, r.equip, raceOf(r));
 }
 
 export interface XpReport { id: string; name: string; classId: string; gained: number; from: number; to: number }
 
-/** Adds battle XP to each unit's class used in that battle (capped at max level). */
+/** Adds battle XP, plus the race's bonus, to each unit's class used in that battle (capped at max level). */
 export function applyBattleXp(roster: RosterUnit[], used: { id: string; classId: string }[], xp: Record<string, number>) {
   const report: XpReport[] = [];
   const next = roster.map(r => {
     const u = used.find(x => x.id === r.id);
-    const gained = u ? Math.max(0, Math.floor(xp[r.id] ?? 0)) : 0;
+    const gained = u ? Math.max(0, Math.floor((xp[r.id] ?? 0) * (1 + (RACES[raceOf(r)]?.trait.xpPct ?? 0) / 100))) : 0;
     if (!u || gained === 0) return r;
     const before = r.xp[u.classId] ?? 0;
     const after = Math.min(MAX_CLASS_XP, before + gained);
@@ -89,7 +96,8 @@ export function parseRoster(data: unknown): RosterUnit[] | null {
       if (!Object.hasOwn(CLASSES, c) || !Number.isInteger(v) || (v as number) < 0) return null;
       xp[c] = Math.min(MAX_CLASS_XP, v as number);
     }
-    const r: RosterUnit = { id: u.id, name: u.name, classId: u.classId, xp, passive: u.passive ?? null };
+    if (u.raceId !== undefined && !Object.hasOwn(RACES, u.raceId)) return null;
+    const r: RosterUnit = { id: u.id, name: u.name, classId: u.classId, ...(u.raceId ? { raceId: u.raceId } : {}), xp, passive: u.passive ?? null };
     if (!isUnlocked(r, r.classId)) return null;
     if (r.passive !== null && !unlockedPassives(r).includes(r.passive)) return null;
     out.push(r);

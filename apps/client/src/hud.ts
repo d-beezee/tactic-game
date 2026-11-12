@@ -1,4 +1,4 @@
-import { CLASSES, unitById, type BattleState, type Side, type Team, type Unit } from '@tactics/core';
+import { CLASSES, RACES, STATUSES, unitById, type BattleState, type Side, type Team, type Unit } from '@tactics/core';
 import { music } from './music';
 import { play, type Sound } from './sfx';
 import { reducedMotion } from './theme';
@@ -22,12 +22,13 @@ const el = (tag: string, className: string, text = '') => Object.assign(document
 /** The local player's team: in PvP it can be B. */
 let me: Team = 'A';
 
-/** Portrait data URL for a class; set by the battle once the sprites are loaded. */
-let portraitOf: (classId: string) => string = () => '';
+type Look = { raceId?: string; classId: string };
+/** Portrait data URL for a race and class; set by the battle once the sprites are loaded. */
+let portraitOf: (u: Look) => string = () => '';
 
-function medal(u: { classId: string; team: string; name: string }, extra = '') {
+function medal(u: Look & { team: string; name: string }, extra = '') {
   const m = el('div', `medal ${u.team}${extra}`);
-  const url = portraitOf(u.classId);
+  const url = portraitOf(u);
   if (url) m.style.backgroundImage = `url(${url})`;
   m.setAttribute('aria-hidden', 'true');
   return m;
@@ -50,6 +51,12 @@ function button(b: Btn): HTMLElement {
   return wrap;
 }
 
+/** "Veleno 2 · Forza 3": each status with its turns left. */
+const statusText = (u: Unit) => (u.statuses ?? []).map(s => `${STATUSES[s.id].name} ${s.turns}`).join(' · ');
+
+/** Expected result of an action. Without `amount` (statuses, teleport) only the title and the rows show. */
+export interface Forecast { title: string; amount?: number; heal: boolean; side?: Side; dh?: number; hp?: number; maxHp?: number; rows?: [string, string][] }
+
 const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco ×1,25', back: 'Alle spalle ×1,5' };
 
 export const hud = {
@@ -61,7 +68,7 @@ export const hud = {
     me = 'A';
     portraitOf = () => '';
   },
-  setPortraits(fn: (classId: string) => string) { portraitOf = fn; },
+  setPortraits(fn: (u: Look) => string) { portraitOf = fn; },
   setTeam(team: Team) { me = team; },
 
   timeline(s: BattleState) {
@@ -91,6 +98,7 @@ export const hud = {
       c.querySelector<HTMLElement>('.hp-now')!.classList.toggle('low', low);
       c.querySelector<HTMLElement>('.hp-ghost')!.style.width = pct;
       c.querySelector('.hp-num')!.textContent = `${Math.max(0, u.hp)}/${u.stats.maxHp}`;
+      c.querySelector('.statuses')!.textContent = statusText(u);
       return;
     }
     c.dataset.id = u.id;
@@ -107,11 +115,11 @@ export const hud = {
     now.style.width = ghost.style.width = pct;
     bar.append(ghost, now);
     const head = el('div', 'head'), who = el('div', '');
-    who.append(el('div', 'name', u.name), el('div', 'cls', `${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? `, ${CLASSES[u.passive].passive.name}` : ''}${u.team === me ? '' : ', nemico'}`));
+    who.append(el('div', 'name', u.name), el('div', 'cls', `${RACES[u.raceId]?.name ?? ''} ${CLASSES[u.classId].name} Lv ${u.level}${u.passive ? `, ${CLASSES[u.passive].passive.name}` : ''}${u.team === me ? '' : ', nemico'}`));
     head.append(medal(u), who);
     const hpRow = el('div', 'hp-row');
     hpRow.append(el('span', 'hp-num', `${Math.max(0, u.hp)}/${stats.maxHp}`), el('span', 'hp-lbl', 'PV'));
-    c.replaceChildren(head, bar, hpRow, grid);
+    c.replaceChildren(head, bar, hpRow, grid, el('div', 'statuses', statusText(u)));
   },
 
   /** The battle goal, under the banner; null hides it. */
@@ -136,21 +144,29 @@ export const hud = {
   },
 
   /** Expected result of an action, shown before the player confirms it. */
-  forecast(f: { title: string; amount: number; heal: boolean; side?: Side; dh?: number; hp: number; maxHp: number } | null) {
+  forecast(f: Forecast | null) {
     const box = $('forecast');
     if (!f) return void (box.hidden = true);
     box.className = f.heal ? 'heal' : '';
-    const after = f.heal ? Math.min(f.maxHp, f.hp + f.amount) : Math.max(0, f.hp - f.amount);
-    const rows: [string, string][] = [];
+    const rows: [string, string][] = [...(f.rows ?? [])];
     if (!f.heal && f.side) rows.push(['Lato', SIDE_TEXT[f.side]]);
     if (!f.heal && f.dh) rows.push([f.dh > 0 ? `Più in alto di ${f.dh}` : `Più in basso di ${-f.dh}`, `${f.dh > 0 ? '+' : ''}${Math.max(-4, Math.min(4, f.dh)) * 5}%`]);
     const dl = document.createElement('dl');
     for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v));
-    const big = el('div', 'big', `${f.heal ? '+' : ''}${f.amount}`);
-    big.append(el('small', '', f.heal ? 'cura, circa' : 'danno, circa'));
-    const res = el('div', 'after');
-    res.append(`PV ${f.hp} `, el('span', '', 'diventa'), ' ', el('b', after === 0 ? 'ko' : '', after === 0 ? 'KO' : String(after)));
-    box.replaceChildren(el('h4', '', f.title), big, dl, res);
+    const parts: HTMLElement[] = [el('h4', '', f.title)];
+    if (f.amount !== undefined) {
+      const big = el('div', 'big', `${f.heal ? '+' : ''}${f.amount}`);
+      big.append(el('small', '', f.heal ? 'cura, circa' : 'danno, circa'));
+      parts.push(big);
+    }
+    parts.push(dl);
+    if (f.amount !== undefined && f.hp !== undefined && f.maxHp !== undefined) {
+      const after = f.heal ? Math.min(f.maxHp, f.hp + f.amount) : Math.max(0, f.hp - f.amount);
+      const res = el('div', 'after');
+      res.append(`PV ${f.hp} `, el('span', '', 'diventa'), ' ', el('b', after === 0 ? 'ko' : '', after === 0 ? 'KO' : String(after)));
+      parts.push(res);
+    }
+    box.replaceChildren(...parts);
     box.hidden = false;
   },
 

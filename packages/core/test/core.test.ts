@@ -183,7 +183,8 @@ describe('progression', () => {
     const r = [unit({ warrior: 90 })];
     const { roster, report } = applyBattleXp(r, [{ id: 'r', classId: 'warrior' }], { r: 20 });
     expect(classLevel(roster[0], 'warrior')).toBe(2);
-    expect(report).toEqual([{ id: 'r', name: 'r', classId: 'warrior', gained: 20, from: 1, to: 2 }]);
+    // humans get +10%
+    expect(report).toEqual([{ id: 'r', name: 'r', classId: 'warrior', gained: 22, from: 1, to: 2 }]);
     expect(applyBattleXp(r, [{ id: 'r', classId: 'warrior' }], { r: 1e9 }).roster[0].xp.warrior).toBe(xpToReach(8));
   });
 
@@ -260,7 +261,7 @@ describe('test battle on the server', () => {
     expect(replayTestBattle(map, units, 7, log).xp).toEqual(end.xp);
     const out = payBattle(p, units, replayTestBattle(map, units, 7, log), 50);
     expect(out.player.gold).toBe(START_GOLD + 50);
-    expect(out.report.map(r => [r.id, r.gained])).toEqual(deploy.map(d => [d.id, end.xp[d.id]]).filter(([, xp]) => xp));
+    expect(out.report.map(r => [r.id, r.gained])).toEqual(deploy.map(d => [d.id, Math.floor(end.xp[d.id] * 1.1)]).filter(([, xp]) => xp));
   });
 
   it('mission enemies are checked against the map and can outnumber maxDeploy', () => {

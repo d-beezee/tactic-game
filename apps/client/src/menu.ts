@@ -1,11 +1,12 @@
 import {
-  CAMPAIGN, CLASSES, chapterOpen, DEFAULT_ROSTER, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
-  unlockedPassives, xpToReach, type Chapter, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
+  CAMPAIGN, CLASSES, DEFAULT_RACE, RACES, STATUSES, allowedRaces, chapterOpen, DEFAULT_ROSTER, raceOf, unitActions, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
+  unlockedPassives, xpToReach, type ActionDef, type Chapter, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account, type Mission, type Music, type PvpState, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
 import { getLibrary, music, playCode, setLibrary } from './music';
 import { play } from './sfx';
+import { spriteDir } from './sprites';
 import { reducedMotion, saveSettings, settings } from './theme';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] => {
@@ -23,18 +24,39 @@ const STAT_SHORT: Record<keyof Stats, string> = { maxHp: 'PV', atk: 'ATT', def: 
 const BAR_MAX: Partial<Record<keyof Stats, number>> = { maxHp: 120, atk: 30, def: 30, mag: 30, speed: 20 };
 const FACINGS = ['S', 'E', 'N', 'W'];
 
-/** The unit's sprite turning on a lit pedestal; stops by itself once the screen is gone. */
-function pedestal(classId: string) {
-  const img = el('img', { alt: '', src: `units/${classId}/S.png`, width: 168, height: 168 });
+/** The unit's sprite turning on a lit pedestal; stops by itself once the screen is gone. Empty for art not drawn yet. */
+function pedestal(u: RosterUnit) {
+  const dir = spriteDir(raceOf(u), u.classId);
+  if (!dir) return el('div', { className: 'pedestal' });
+  const img = el('img', { alt: '', src: `${dir}/S.png`, width: 168, height: 168 });
   if (!reducedMotion()) {
     let f = 0;
     const spin = setInterval(() => {
       if (!img.isConnected) return clearInterval(spin);
-      img.src = `units/${classId}/${FACINGS[f = (f + 1) % 4]}.png`;
+      img.src = `${dir}/${FACINGS[f = (f + 1) % 4]}.png`;
     }, 1100);
   }
   return el('div', { className: 'pedestal' }, img);
 }
+
+const EFFECT_TEXT: Record<ActionDef['effect'], string> = { damage: 'danno', heal: 'cura', none: '', teleport: 'teletrasporto', swap: 'scambio di posto' };
+
+/** "danno · gittata 2–4 · area 1 · Veleno 3 turni" */
+function actionText(a: ActionDef): string {
+  const st = a.status;
+  return [
+    EFFECT_TEXT[a.effect],
+    `gittata ${a.minRange === a.maxRange ? a.maxRange : `${a.minRange}–${a.maxRange}`}${a.ranged ? '' : ' (corpo a corpo)'}`,
+    a.area !== undefined ? `area ${a.area}` : '',
+    st ? `${STATUSES[st.id].name} ${st.turns} ${st.turns === 1 ? 'turno' : 'turni'}${st.chance !== undefined ? ` (${st.chance}%)` : ''}` : '',
+    a.push ? `spinta ${a.push}` : '',
+    a.uses ? `${a.uses === 1 ? 'una volta' : `${a.uses} volte`} per battaglia` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+const raceName = (id: string | undefined) => RACES[id ?? DEFAULT_RACE].name;
+/** Base classes a race can start in: what a mission recruit can be. */
+const baseClassesOf = (raceId: string) => Object.values(CLASSES).filter(c => !c.requires && allowedRaces(c.id).includes(raceId));
 
 /** Live map behind the menu, loaded on demand so Phaser stays out of the first download. */
 let stopBackdrop: (() => void) | null = null;
@@ -347,6 +369,8 @@ export function showMenu(go: {
               el('span', { className: 'rn', textContent: m.name }),
               el('span', { className: 'rc', textContent: m.done ? 'Vinta oggi · torna domani' : `+${m.gold} oro e XP · ${map?.name ?? 'mappa mancante'}` }),
               el('span', { className: 'rc', textContent: enemySummary(m.enemies) }),
+              ...(m.recruit && !player.roster.some(u => u.id === `m-${m.id}`)
+                ? [el('span', { className: 'rc', textContent: `Alla prima vittoria si unisce ${m.recruit.name}, ${raceName(m.recruit.raceId)} ${CLASSES[m.recruit.classId].name}` })] : []),
             );
           }),
           ...(list.length ? [] : [el('p', { className: 'hint', textContent: 'Oggi non ci sono missioni. Allenati con la battaglia di prova.' })]),
@@ -356,12 +380,18 @@ export function showMenu(go: {
   };
 
   /** Admin only: create and delete daily missions. The draft survives the redraw after a failed create. */
-  let draft: { name: string; mapId: string; gold: number; enemies: MissionEnemy[]; classId: string; level: number; trackId: string | null } | null = null;
+  let draft: {
+    name: string; mapId: string; gold: number; enemies: MissionEnemy[]; raceId: string; classId: string; level: number; trackId: string | null;
+    recruit: { on: boolean; name: string; raceId: string; classId: string };
+  } | null = null;
   const manageMissions = async (request: Promise<Mission[]>, shown: Mission[] = []) => {
     const list = await loadMissions(request, shown);
     if (!list) return auth();
     const maps = allMaps();
-    if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = { name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), classId: 'warrior', level: 1, trackId: null };
+    if (!draft || !maps.some(m => m.id === draft!.mapId)) draft = {
+      name: '', mapId: maps[0].id, gold: 50, enemies: defaultEnemies(maps[0]), raceId: DEFAULT_RACE, classId: 'warrior', level: 1, trackId: null,
+      recruit: { on: false, name: '', raceId: 'corvid', classId: 'lancer' },
+    };
     const d = draft;
     const current = () => maps.find(m => m.id === d.mapId)!;
 
@@ -374,8 +404,31 @@ export function showMenu(go: {
     const track = el('select', { className: 'field', ariaLabel: 'Musica', onchange: () => { d.trackId = track.value || null; } },
       el('option', { value: '', textContent: 'Musica: quella delle battaglie' }),
       ...tracks.map(t => el('option', { value: t.id, textContent: `Musica: ${t.name}`, selected: t.id === d.trackId })));
-    const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } },
-      ...Object.values(CLASSES).map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
+    // classes follow the race: changing race keeps the class if that race can take it
+    const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } });
+    const fillClasses = () => {
+      const ok = Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(d.raceId));
+      if (!ok.some(c => c.id === d.classId)) d.classId = ok[0].id;
+      cls.replaceChildren(...ok.map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
+    };
+    fillClasses();
+    const race = el('select', { className: 'field', ariaLabel: 'Razza del prossimo nemico', onchange: () => { d.raceId = race.value; fillClasses(); } },
+      ...Object.values(RACES).map(r => el('option', { value: r.id, textContent: r.name, selected: r.id === d.raceId })));
+
+    const rc = d.recruit;
+    const recruitName = el('input', { className: 'field', placeholder: 'Nome della recluta', ariaLabel: 'Nome della recluta', maxLength: 20, value: rc.name, oninput: () => { rc.name = recruitName.value; } });
+    const recruitClass = el('select', { className: 'field', ariaLabel: 'Classe della recluta', onchange: () => { rc.classId = recruitClass.value; } });
+    const fillRecruitClasses = () => {
+      const ok = baseClassesOf(rc.raceId);
+      if (!ok.some(c => c.id === rc.classId)) rc.classId = ok[0].id;
+      recruitClass.replaceChildren(...ok.map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === rc.classId })));
+    };
+    fillRecruitClasses();
+    const recruitRace = el('select', { className: 'field', ariaLabel: 'Razza della recluta', onchange: () => { rc.raceId = recruitRace.value; fillRecruitClasses(); } },
+      ...Object.values(RACES).map(r => el('option', { value: r.id, textContent: r.name, selected: r.id === rc.raceId })));
+    const recruitFields = el('div', { className: 'brush', hidden: !rc.on }, recruitName, recruitRace, recruitClass);
+    const recruitOn = el('input', { type: 'checkbox', checked: rc.on, onchange: () => { rc.on = recruitOn.checked; recruitFields.hidden = !rc.on; recruitName.required = rc.on; } });
+    recruitName.required = rc.on;
     const lvl = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.level), ariaLabel: 'Livello del prossimo nemico',
       oninput: () => { d.level = Number(lvl.value); } });
     const count = el('span', { className: 'hint' });
@@ -392,11 +445,11 @@ export function showMenu(go: {
         const b = el('button', {
           type: 'button', className: `cell t-${m.terrain[y][x]}${mine ? ' mine' : ''}${foe ? ' foe' : ''}`,
           disabled: mine || !isWalkable(m, { x, y }),
-          title: foe ? `${CLASSES[foe.classId].name}, livello ${foe.level}` : mine ? 'Partenza del giocatore' : `Altezza ${h}`,
+          title: foe ? `${raceName(foe.raceId)} ${CLASSES[foe.classId].name}, livello ${foe.level}` : mine ? 'Partenza del giocatore' : `Altezza ${h}`,
           textContent: foe ? `${CLASSES[foe.classId].name[0]}${foe.level}` : '',
           onclick: () => {
             if (foe) d.enemies.splice(i, 1);
-            else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: d.classId, level: d.level, pos: { x, y } });
+            else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: d.classId, ...(d.raceId !== DEFAULT_RACE ? { raceId: d.raceId } : {}), level: d.level, pos: { x, y } });
             drawGrid();
           },
         });
@@ -411,14 +464,21 @@ export function showMenu(go: {
       name, map, el('label', {}, gold, ' oro'), track,
       el('div', { className: 'enemy-editor' },
         el('p', { className: 'hint', textContent: 'Tocca una casella per piazzare un nemico, toccalo di nuovo per toglierlo. In blu le partenze del giocatore.' }),
-        el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), cls, el('label', {}, 'livello ', lvl), count),
+        el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), race, cls, el('label', {}, 'livello ', lvl), count),
         grid,
+      ),
+      el('div', { className: 'enemy-editor' },
+        el('label', { className: 'hint' }, recruitOn, ' Alla prima vittoria si unisce una recluta'),
+        recruitFields,
       ),
       el('button', { className: 'menu-btn primary', type: 'submit', textContent: 'Crea missione' }),
     );
     form.onsubmit = e => {
       e.preventDefault();
-      const created = api.createMission({ name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies, trackId: d.trackId }).then(l => { draft = null; return l; });
+      const created = api.createMission({
+        name: d.name, mapId: d.mapId, gold: d.gold, enemies: d.enemies, trackId: d.trackId,
+        recruit: rc.on ? { name: rc.name, raceId: rc.raceId, classId: rc.classId } : null,
+      }).then(l => { draft = null; return l; });
       void manageMissions(created, list);
     };
     root.replaceChildren(
@@ -432,7 +492,7 @@ export function showMenu(go: {
         el('div', { className: 'user-list' },
           ...list.map(m => el('div', { className: 'user-row' },
             el('span', { className: 'rn', textContent: m.name }),
-            el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}${trackName(m.trackId) ? ` · ♪ ${trackName(m.trackId)}` : ''}` }),
+            el('span', { className: 'rc', textContent: `${mapName(m.mapId) ?? 'mappa mancante'} · +${m.gold} oro · ${enemySummary(m.enemies)}${m.recruit ? ` · recluta ${m.recruit.name}` : ''}${trackName(m.trackId) ? ` · ♪ ${trackName(m.trackId)}` : ''}` }),
             el('button', {
               className: 'back', textContent: 'Elimina',
               onclick: () => confirm(`Eliminare la missione "${m.name}"?`) && void manageMissions(api.deleteMission(m.id), list),
@@ -631,11 +691,12 @@ export function showMenu(go: {
       ...roster.map(u => el('button', {
         className: `roster-item${u.id === selected ? ' sel' : ''}`,
         onclick: () => { selected = u.id; barracks(); },
-      }, el('span', { className: 'rn', textContent: u.name }), el('span', { className: 'rc', textContent: `${CLASSES[u.classId].name} Lv ${classLevel(u, u.classId)}` }))),
+      }, el('span', { className: 'rn', textContent: u.name }), el('span', { className: 'rc', textContent: `${raceName(u.raceId)} · ${CLASSES[u.classId].name} Lv ${classLevel(u, u.classId)}` }))),
     );
 
     const classes = el('div', { className: 'class-grid' },
-      ...Object.values(CLASSES).map(c => {
+      // only the classes of the unit's race
+      ...Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(raceOf(unit))).map(c => {
         const lvl = classLevel(unit, c.id), xp = unit.xp[c.id] ?? 0;
         const max = lvl >= MAX_CLASS_LEVEL;
         const pct = max ? 100 : (100 * (xp - xpToReach(lvl))) / (xpToReach(lvl + 1) - xpToReach(lvl));
@@ -700,10 +761,7 @@ export function showMenu(go: {
     );
 
     const actions = el('ul', { className: 'abilities' },
-      ...cls.actions.map(a => el('li', {},
-        el('b', { textContent: a.name }),
-        ` · ${a.effect === 'heal' ? 'cura' : 'danno'} · gittata ${a.minRange === a.maxRange ? a.maxRange : `${a.minRange}–${a.maxRange}`}${a.ranged ? '' : ' (corpo a corpo)'}`,
-      )),
+      ...unitActions({ classId: unit.classId, raceId: raceOf(unit) }).map(a => el('li', {}, el('b', { textContent: a.name }), ` · ${actionText(a)}`)),
     );
 
     root.replaceChildren(
@@ -716,10 +774,11 @@ export function showMenu(go: {
         list,
         el('section', { className: 'detail' },
           el('div', { className: 'hero-unit' },
-            pedestal(unit.classId),
+            pedestal(unit),
             el('div', {},
               el('h3', { textContent: unit.name }),
-              el('p', { className: 'sub', textContent: `${cls.name} Lv ${eff.level}` }),
+              el('p', { className: 'sub', textContent: `${raceName(unit.raceId)} · ${cls.name} Lv ${eff.level}` }),
+              el('p', { className: 'hint', textContent: `${RACES[raceOf(unit)].trait.name}: ${RACES[raceOf(unit)].trait.description}` }),
               stats,
             ),
           ),

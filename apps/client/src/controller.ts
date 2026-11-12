@@ -1,13 +1,16 @@
 import {
-  CLASSES, activeUnit, apply, rangeCells, destinations, expectedAmount, facingToward, heightAt, key, pathTo, planTurn, reachable, samePos, sideOf, targetsFor,
-  unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
+  STATUSES, actionTargets, activeUnit, affectedBy, apply, areaCells, areaRadius, rangeBonus, rangeCells, destinations, expectedAmount, facingToward, heightAt, key, pathTo,
+  planTurn, reachable, samePos, sideOf, unitActions, unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
-import { hud } from './hud';
+import { hud, type Forecast } from './hud';
+import { play } from './sfx';
 import { toMenu } from './nav';
 import { COLOR } from './theme';
 
-const actionColor = (a: ActionDef) => (a.effect === 'heal' ? COLOR.mend : COLOR.strike);
+const actionColor = (a: ActionDef) => (a.effect === 'teleport' || a.effect === 'swap' ? COLOR.reach : a.targets === 'ally' ? COLOR.mend : COLOR.strike);
+const actionIcon = (a: ActionDef) => (a.effect === 'teleport' || a.effect === 'swap' ? 'move' as const : a.targets === 'ally' ? 'heal' as const : 'attack' as const);
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** The goal of team A, in words, with the units that must not fall. */
@@ -71,13 +74,23 @@ export class Controller {
     }
   }
 
-  private forecastFor(action: ActionDef, p: Pos) {
-    const u = this.unit, t = this.state.units.find(x => x.hp > 0 && samePos(x.pos, p))!;
+  private forecastFor(action: ActionDef, p: Pos): Forecast {
+    const u = this.unit, s = this.state;
+    const hit = affectedBy(s, u, action, u.pos, p);
     const heal = action.effect === 'heal';
+    if (action.effect === 'teleport') return { title: `${action.name}: ${u.name}`, heal, rows: [['Effetto', 'Teletrasporto']] };
+    if (action.effect === 'swap') return { title: `${action.name}: ${u.name} e ${hit[0].name}`, heal, rows: [['Effetto', 'Scambio di posto']] };
+    const rows: [string, string][] = [];
+    if (areaRadius(u, action) >= 0) rows.push(['Area', plural(hit.length, 'bersaglio', 'bersagli')]);
+    const st = action.status;
+    if (st) rows.push(['Stato', `${STATUSES[st.id].name}, ${plural(st.turns, 'turno', 'turni')}${st.chance !== undefined ? ` (${Math.min(100, st.chance + u.mods.chanceBonus)}%)` : ''}`]);
+    if (action.push) rows.push(['Spinta', plural(action.push + u.mods.pushBonus, 'casella', 'caselle')]);
+    const t = hit.find(x => samePos(x.pos, p)) ?? hit[0];
+    if (action.effect === 'none') return { title: `${action.name}: ${u.name} su ${t.name}${hit.length > 1 ? ' e altri' : ''}`, heal, rows };
     return {
-      title: `${action.name}: ${u.name} su ${t.name}`, heal, hp: t.hp, maxHp: t.stats.maxHp,
-      amount: expectedAmount(this.state.map, u, u.pos, action, t),
-      side: heal ? undefined : sideOf(u.pos, t), dh: heightAt(this.state.map, u.pos) - heightAt(this.state.map, t.pos),
+      title: `${action.name}: ${u.name} su ${t.name}${hit.length > 1 ? ' e altri' : ''}`, heal, hp: t.hp, maxHp: t.stats.maxHp, rows,
+      amount: expectedAmount(s.map, u, u.pos, action, t),
+      side: heal ? undefined : sideOf(u.pos, t), dh: heightAt(s.map, u.pos) - heightAt(s.map, t.pos),
     };
   }
 
@@ -119,15 +132,16 @@ export class Controller {
     hud.forecast(null);
     this.scene.showFacing(u.id, this.facing);
     hud.banner(this.state.moved && this.state.acted ? `${u.name} ha finito: chiudi il turno` : `Round ${this.state.round}: scegli cosa fa ${u.name}`);
-    const actions = CLASSES[u.classId].actions.map(a => {
-      const n = targetsFor(this.state, u, a).length;
+    const actions = unitActions(u).map(a => {
+      const n = actionTargets(this.state, u, a).length;
+      const spent = a.uses !== undefined && (u.uses[a.id] ?? 0) >= a.uses;
       return {
-        label: a.name, icon: a.effect === 'heal' ? 'heal' as const : 'attack' as const,
-        hint: this.state.acted ? 'già fatto' : n ? undefined : 'nessun bersaglio', disabled: this.state.acted || !n, onClick: () => this.target(a),
+        label: a.name, icon: actionIcon(a),
+        hint: this.state.acted ? 'già fatto' : spent ? 'già usata' : n ? undefined : 'nessun bersaglio', disabled: this.state.acted || !n, onClick: () => this.target(a),
         onHover: (on: boolean) => {
           if (this.mode.k !== 'idle') return;
           this.scene.clearHighlights();
-          if (on) this.scene.highlight(rangeCells(this.state.map, u.pos, a, u.mods.range), actionColor(a), 0.3);
+          if (on) this.scene.highlight(rangeCells(this.state.map, u.pos, a, rangeBonus(u, a)), actionColor(a), 0.3);
         },
       };
     });
@@ -150,13 +164,13 @@ export class Controller {
   }
 
   private target(action: ActionDef) {
-    const cells = targetsFor(this.state, this.unit, action).map(t => t.pos);
+    const cells = actionTargets(this.state, this.unit, action);
     this.mode = { k: 'target', action, cells };
     this.scene.clearHighlights();
-    this.scene.highlight(rangeCells(this.state.map, this.unit.pos, action, this.unit.mods.range), actionColor(action), 0.18);
+    this.scene.highlight(rangeCells(this.state.map, this.unit.pos, action, rangeBonus(this.unit, action)), actionColor(action), 0.18);
     this.scene.highlight(cells, actionColor(action));
     hud.forecast(null);
-    hud.banner(`${action.name}: tocca un bersaglio`);
+    hud.banner(`${action.name}: ${action.effect === 'teleport' ? 'tocca una casella libera' : areaRadius(this.unit, action) >= 0 ? 'tocca il centro dell\'area' : 'tocca un bersaglio'}`);
     hud.buttons([{ label: 'Indietro', icon: 'back', onClick: () => this.menu() }]);
   }
 
@@ -165,6 +179,8 @@ export class Controller {
     this.mode = { k: 'confirm', action, cells, target };
     this.scene.clearHighlights();
     this.scene.highlight(cells, actionColor(action), 0.25);
+    const r = areaRadius(this.unit, action);
+    if (r > 0) this.scene.highlight(areaCells(this.state.map, target, r), COLOR.brass, 0.3);
     this.scene.highlight([target], COLOR.brass, 0.6);
     hud.forecast(this.forecastFor(action, target));
     hud.banner('Tocca di nuovo il bersaglio, o Conferma');
@@ -252,10 +268,47 @@ export class Controller {
         hud.card(target);
       }
       if (ev.type === 'ko') this.scene.koFx(byId(ev.unitId));
+      if (ev.type === 'status' && ev.on) {
+        play('select');
+        this.scene.popText(byId(ev.unitId), STATUSES[ev.statusId].name, '#ffc83d');
+        this.scene.syncUnit(byId(ev.unitId));
+        await wait(300);
+      }
+      if (ev.type === 'tick') {
+        const t = byId(ev.unitId);
+        if (ev.amount > 0) this.scene.healFx(t, ev.amount);
+        else { play('hit'); this.scene.popText(t, String(-ev.amount), '#c6f27a'); }
+        this.scene.syncUnit(t);
+        await wait(450);
+      }
+      if (ev.type === 'push') {
+        await this.scene.animateMove(ev.unitId, ev.path);
+        if (ev.damage) {
+          play('heavy');
+          this.scene.popText(byId(ev.unitId), String(ev.damage), '#ffffff', ev.path.length === 1 ? 'Urto' : 'Caduta');
+        }
+      }
+      if (ev.type === 'dodge') {
+        play('step');
+        this.scene.popText(byId(ev.unitId), 'Schivata', '#7fd3e6');
+      }
+      if (ev.type === 'skip') {
+        const t = byId(ev.unitId);
+        this.scene.focus(t.pos);
+        this.scene.popText(t, 'Stordito', '#ffc83d');
+        await wait(700);
+      }
+      if (ev.type === 'teleport' || ev.type === 'swap') {
+        for (const id of ev.type === 'swap' ? [ev.unitId, ev.otherId] : [ev.unitId]) {
+          this.scene.syncUnit(byId(id));
+          this.scene.dropIn(id);
+        }
+        await wait(350);
+      }
     }
     for (const u of this.state.units) this.scene.syncUnit(u);
     if (a.type !== 'end') this.scene.showFacing(this.unit.id, this.facing);
-    if (this.state.events.some(e => e.type === 'damage' || e.type === 'heal')) await wait(900);
+    if (this.state.events.some(e => e.type === 'damage' || e.type === 'heal' || e.type === 'push')) await wait(900);
     hud.card(this.unit);
   }
 
@@ -273,7 +326,7 @@ export class Controller {
     for (;;) {
       const a = await this.opts.remote!();
       if (a.type === 'act') {
-        const action = CLASSES[this.unit.classId].actions.find(x => x.id === a.actionId)!;
+        const action = unitActions(this.unit).find(x => x.id === a.actionId)!;
         this.scene.highlight([a.target], actionColor(action));
         await wait(350);
       }
@@ -292,7 +345,7 @@ export class Controller {
     await wait(500);
     for (const a of planTurn(this.state)) {
       if (a.type === 'act') {
-        const action = CLASSES[this.unit.classId].actions.find(x => x.id === a.actionId)!;
+        const action = unitActions(this.unit).find(x => x.id === a.actionId)!;
         this.scene.highlight([a.target], actionColor(action));
         await wait(350);
       }

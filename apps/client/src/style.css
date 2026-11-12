@@ -120,6 +120,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: squar
 #card .hp-lbl { font: 700 13px var(--ui); color: var(--dim); }
 #card .stats { display: grid; grid-template-columns: repeat(6, auto); gap: 2px 14px; margin-top: 6px; font: 20px var(--num); font-variant-numeric: tabular-nums; }
 #card .stats i { display: block; font: 700 12px var(--ui); font-style: normal; color: var(--dim); }
+#card .statuses { margin-top: 6px; font: 700 14px var(--ui); color: var(--brass); }
+#card .statuses:empty { display: none; }
 
 #buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; align-items: flex-end; padding: 4px 4px 10px; }
 #buttons button { display: grid; justify-items: center; align-content: center; gap: 1px; min-width: 82px; min-height: 60px; padding: 6px 14px; font-size: 17px; background: var(--panel);

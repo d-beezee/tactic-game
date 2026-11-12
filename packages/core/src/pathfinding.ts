@@ -1,17 +1,18 @@
 import { DIRS, heightAt, inBounds, isWalkable, key, type MapData, type Pos } from './map';
-import type { Unit } from './units';
+import { effectiveStat, type Unit } from './units';
 
 export interface Reach { pos: Pos; cost: number; prev: string | null }
 
 /** BFS over cells within move range. Steps need |dh| <= jump. Allies can be passed through, enemies block. */
 export function reachable(map: MapData, units: Unit[], mover: Unit): Map<string, Reach> {
   const occupant = new Map(units.filter(u => u.hp > 0).map(u => [key(u.pos), u]));
+  const move = effectiveStat(mover, 'move');
   const out = new Map<string, Reach>([[key(mover.pos), { pos: mover.pos, cost: 0, prev: null }]]);
   const queue: Pos[] = [mover.pos];
   while (queue.length) {
     const cur = queue.shift()!;
     const node = out.get(key(cur))!;
-    if (node.cost >= mover.stats.move) continue;
+    if (node.cost >= move) continue;
     for (const d of Object.values(DIRS)) {
       const next = { x: cur.x + d.x, y: cur.y + d.y };
       const k = key(next);

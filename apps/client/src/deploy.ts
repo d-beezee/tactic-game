@@ -1,5 +1,6 @@
-import { CLASSES, key, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
+import { CLASSES, key, raceOf, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
+import { spriteDir } from './sprites';
 import { hud } from './hud';
 import { toMenu } from './nav';
 import { COLOR } from './theme';
@@ -61,7 +62,7 @@ export class Deploy {
     const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
       const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
       const face = Object.assign(document.createElement('div'), { className: `medal ${this.team}` });
-      face.style.backgroundImage = `url(${this.scene.portrait(r.classId)})`;
+      face.style.backgroundImage = `url(${this.scene.portrait(r)})`;
       const txt = document.createElement('span');
       txt.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
       item.append(face, txt);
@@ -89,10 +90,12 @@ export class Deploy {
   private startDrag(src: Source, e: PointerEvent) {
     e.preventDefault();
     const name = src.kind === 'tray' ? src.r.name : src.u.name;
-    const classId = src.kind === 'tray' ? src.r.classId : src.u.classId;
+    const who = src.kind === 'tray' ? src.r : src.u;
+    const dir = spriteDir(raceOf(who), who.classId);
     // the unit itself follows the finger, half transparent
     const ghost = Object.assign(document.createElement('div'), { className: 'drag-ghost' });
-    ghost.append(Object.assign(document.createElement('img'), { src: `units/${classId}/S.png`, alt: '' }), Object.assign(document.createElement('span'), { textContent: name }));
+    if (dir) ghost.append(Object.assign(document.createElement('img'), { src: `${dir}/S.png`, alt: '' }));
+    ghost.append(Object.assign(document.createElement('span'), { textContent: name }));
     ghost.hidden = true;
     document.body.append(ghost);
     this.drag = { src, ghost, startX: e.clientX, startY: e.clientY, moved: false, hover: null };

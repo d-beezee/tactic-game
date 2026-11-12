@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { CLASSES, DIRS, heightAt, key, terrainAt, type Dir, type MapData, type Pos, type Side, type Unit } from '@tactics/core';
+import { CLASSES, DIRS, heightAt, key, raceOf, terrainAt, type Dir, type MapData, type Pos, type Side, type StatusId, type Unit } from '@tactics/core';
 import { buzz, play } from './sfx';
 import { COLOR, TEAM_COLOR, reducedMotion, settings } from './theme';
+import { ALL_SPRITE_DIRS, spriteDir } from './sprites';
 import { BLOCK, WATER_FRAMES, makeTextures } from './tiles';
 
 export { TEAM_COLOR } from './theme';
@@ -16,13 +17,18 @@ const DIR_LIST = Object.keys(DIRS) as Dir[];
 
 interface UnitSprite {
   c: Phaser.GameObjects.Container; arrow: Phaser.GameObjects.Graphics; hp: Phaser.GameObjects.Graphics; ring: Phaser.GameObjects.Graphics;
-  glow: Phaser.GameObjects.Image; img?: Phaser.GameObjects.Image; body: Phaser.GameObjects.Container; classId: string;
+  glow: Phaser.GameObjects.Image; img?: Phaser.GameObjects.Image; body: Phaser.GameObjects.Container; dir: string | null;
+  statuses: Phaser.GameObjects.Graphics;
 }
 
-// 48×48 pixel-art idle frames, one per view facing (view N/E/S/W = screen NE/SE/SW/NW). Classes without art use the placeholder body.
-const SPRITE_CLASSES = ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage'];
+// 48×48 pixel-art idle frames, one per view facing (view N/E/S/W = screen NE/SE/SW/NW). Units without art use the placeholder body.
 const SPRITE_SCALE = BLOCK.scale, SPRITE_FEET_Y = 46 / 48;
-const spriteKey = (classId: string, d: Dir) => `${classId}-${d}`;
+const spriteKey = (dir: string, d: Dir) => `${dir}-${d}`;
+
+/** Pip colour of each status, above the HP bar. */
+const STATUS_COLOR: Record<StatusId, number> = {
+  poison: 0x9ad13b, regen: 0x22c3b0, stun: 0xffc83d, root: 0xa0703a, 'atk-up': 0xff8a3d, 'def-up': 0x6aa8ff, 'atk-down': 0x8a7f72, 'def-down': 0x5f574d,
+};
 
 /** Screen space kept free for HTML UI around the map. */
 export interface Insets { top: number; right: number; bottom: number; left: number }
@@ -128,12 +134,12 @@ export class BattleScene extends Phaser.Scene {
   }
 
   preload() {
-    for (const c of SPRITE_CLASSES) for (const d of DIR_LIST) this.load.image(spriteKey(c, d), `units/${c}/${d}.png`);
+    for (const dir of ALL_SPRITE_DIRS) for (const d of DIR_LIST) this.load.image(spriteKey(dir, d), `${dir}/${d}.png`);
   }
 
   create() {
     makeTextures(this);
-    for (const c of SPRITE_CLASSES) for (const d of DIR_LIST) this.textures.get(spriteKey(c, d)).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    for (const dir of ALL_SPRITE_DIRS) for (const d of DIR_LIST) this.textures.get(spriteKey(dir, d)).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.cursor = this.add.graphics().setVisible(false);
     this.path = this.add.graphics().setDepth(9000);
     this.setMap(this.mapData);
@@ -377,10 +383,12 @@ export class BattleScene extends Phaser.Scene {
     const ring = this.add.graphics();
     const arrow = this.add.graphics();
     const hp = this.add.graphics();
+    const statuses = this.add.graphics();
     const body = this.add.container();
+    const dir = spriteDir(u.raceId, u.classId);
     let img: Phaser.GameObjects.Image | undefined;
-    if (SPRITE_CLASSES.includes(u.classId)) {
-      img = this.add.image(0, 0, spriteKey(u.classId, u.facing)).setOrigin(0.5, SPRITE_FEET_Y).setScale(SPRITE_SCALE);
+    if (dir) {
+      img = this.add.image(0, 0, spriteKey(dir, u.facing)).setOrigin(0.5, SPRITE_FEET_Y).setScale(SPRITE_SCALE);
       // both teams share the art: a 1px outline in the team colour tells them apart without dirtying the pixels
       if (img.preFX) img.preFX.addGlow(team, 4, 0, false, 0.2, 1);
       else if (u.team === 'B') img.setTint(0xffbfa8);
@@ -392,10 +400,10 @@ export class BattleScene extends Phaser.Scene {
       const letter = this.add.text(0, -20, CLASSES[u.classId].name[0], { fontFamily: '"Jersey 15"', fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
       body.add([g, letter]);
     }
-    c.add([glow, shadow, base, ring, arrow, body, hp]);
+    c.add([glow, shadow, base, ring, arrow, body, hp, statuses]);
     // idle: a whole-pixel bob, out of step between units (fractional scaling would make the pixels shimmer)
     if (!reducedMotion()) this.tweens.add({ targets: body, y: -1.25, duration: 800, yoyo: true, repeat: -1, ease: 'Stepped', delay: Math.random() * 800 });
-    this.sprites.set(u.id, { c, arrow, hp, ring, glow, img, body, classId: u.classId });
+    this.sprites.set(u.id, { c, arrow, hp, ring, glow, img, body, dir, statuses });
     this.syncUnit(u);
   }
 
@@ -408,12 +416,14 @@ export class BattleScene extends Phaser.Scene {
     const pct = u.hp / u.stats.maxHp;
     s.hp.clear().fillStyle(0x0b0806, 0.85).fillRect(-17, -67, 34, 6).fillStyle(pct > 0.35 ? COLOR.hp : COLOR.hpLow).fillRect(-16, -66, 32 * pct, 4)
       .fillStyle(TEAM_COLOR[u.team]).fillRect(-17, -68, 34, 1);
+    s.statuses.clear();
+    (u.statuses ?? []).forEach((st, i) => s.statuses.fillStyle(0x0b0806).fillRect(-17 + i * 7, -76, 6, 6).fillStyle(STATUS_COLOR[st.id]).fillRect(-16 + i * 7, -75, 4, 4));
     if (u.hp <= 0 && s.c.alpha === 1) this.tweens.add({ targets: s.c, alpha: 0, y: p.y + 8, duration: 500 });
   }
 
   private face(s: UnitSprite, gridFacing: Dir) {
     const f = this.viewDir(gridFacing);
-    s.img?.setTexture(spriteKey(s.classId, f));
+    if (s.dir) s.img?.setTexture(spriteKey(s.dir, f));
     const d = DIRS[f];
     const v = { x: ((d.x - d.y) * TW) / 2, y: ((d.x + d.y) * TH) / 2 };
     const len = Math.hypot(v.x, v.y), n = { x: v.x / len, y: v.y / len }, perp = { x: -n.y * 5, y: n.x * 5 };
@@ -533,12 +543,12 @@ export class BattleScene extends Phaser.Scene {
     if (!reducedMotion()) this.cameras.main.shake(side === 'back' ? 180 : 120, side === 'back' ? 0.006 : 0.003);
     play(side === 'front' ? 'hit' : 'heavy');
     buzz(30);
-    this.popNumber(unit, String(amount), '#ffffff', SIDE_LABEL[side]);
+    this.popText(unit, String(amount), '#ffffff', SIDE_LABEL[side]);
   }
 
   healFx(unit: Unit, amount: number) {
     play('heal');
-    this.popNumber(unit, `+${amount}`, '#8fe08a');
+    this.popText(unit, `+${amount}`, '#8fe08a');
     const p = this.at(unit.pos);
     const e = this.add.particles(p.x, p.y - 20, 'mote', {
       x: { min: -16, max: 16 }, y: { min: -10, max: 20 }, speedY: { min: -60, max: -30 }, lifespan: 800,
@@ -570,7 +580,8 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: s.c, y, duration: 320, ease: 'Bounce.easeOut' });
   }
 
-  private popNumber(unit: Unit, text: string, color: string, label = '') {
+  /** A number or a word rising over a unit: damage, status, "Schivata". */
+  popText(unit: Unit, text: string, color: string, label = '') {
     const p = this.at(unit.pos);
     const box = this.add.container(p.x, p.y - 70).setDepth(10_000).setScale(0.4);
     const num = this.add.text(0, 0, text, { fontFamily: '"Jersey 15"', fontSize: '40px', color, stroke: '#0b0806', strokeThickness: 6 }).setOrigin(0.5, 1);
@@ -583,15 +594,16 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** A head-and-shoulders crop of the unit's front sprite, as a data URL for the HTML UI. */
-  portrait(classId: string): string {
-    const cached = this.portraits.get(classId);
+  portrait(u: { raceId?: string; classId: string }): string {
+    const dir = spriteDir(raceOf(u), u.classId);
+    if (!dir) return '';
+    const cached = this.portraits.get(dir);
     if (cached) return cached;
-    if (!SPRITE_CLASSES.includes(classId)) return '';
-    const src = this.textures.get(spriteKey(classId, 'S')).getSourceImage() as CanvasImageSource;
+    const src = this.textures.get(spriteKey(dir, 'S')).getSourceImage() as CanvasImageSource;
     const c = Object.assign(document.createElement('canvas'), { width: 26, height: 26 });
     c.getContext('2d')!.drawImage(src, 11, 0, 26, 26, 0, 0, 26, 26);
     const url = c.toDataURL();
-    this.portraits.set(classId, url);
+    this.portraits.set(dir, url);
     return url;
   }
 }

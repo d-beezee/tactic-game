@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { activeUnit, apply, buyItem, chapterById, chapterOpen, chapterUnits, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type MapData, type Player } from '@tactics/core';
+import { activeUnit, addRecruit, apply, buyItem, chapterById, chapterOpen, chapterUnits, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, parseRecruit, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type MapData, type Player } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -233,10 +233,14 @@ export function createApp(pool: pg.Pool, staticDir: string) {
       // only a mission won for the first time today pays; the insert is the once-a-day check
       const { rows: [paid] } = won && battle.mission_id ? await db.query(
         `INSERT INTO mission_wins (user_id, mission_id, day) SELECT $1, id, ${TODAY} FROM missions WHERE id = $2
-         ON CONFLICT DO NOTHING RETURNING (SELECT gold FROM missions WHERE id = $2)`, [userId, battle.mission_id]) : { rows: [] };
+         ON CONFLICT DO NOTHING RETURNING (SELECT gold FROM missions WHERE id = $2), (SELECT recruit FROM missions WHERE id = $2)`, [userId, battle.mission_id]) : { rows: [] };
+      // the recruit joins on the first paid win; its id comes from the mission, so later wins do not add it again
       const out = paid
-        ? { ...await mutateIn(db, userId, p => payBattle(p, battle.units, end, paid.gold)), won, paid: true }
-        : { report: [], gold: 0, won, paid: false };
+        ? { ...await mutateIn(db, userId, p => {
+            const r = payBattle(p, battle.units, end, paid.gold);
+            return { ...r, ...addRecruit(r.player, battle.mission_id, paid.recruit) };
+          }), won, paid: true }
+        : { report: [], gold: 0, won, paid: false, unlocked: null };
       await db.query('UPDATE battles SET result = $2 WHERE id = $1', [id, JSON.stringify(out)]);
       return out;
     }));
@@ -249,7 +253,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
       : undefined;
 
   const listMissions = async (userId: string) => (await pool.query(
-    `SELECT m.id, m.name, m.map_id AS "mapId", m.gold, m.enemies, m.track_id AS "trackId",
+    `SELECT m.id, m.name, m.map_id AS "mapId", m.gold, m.enemies, m.recruit, m.track_id AS "trackId",
        EXISTS (SELECT 1 FROM mission_wins w WHERE w.mission_id = m.id AND w.user_id = $1 AND w.day = ${TODAY}) AS done
      FROM missions m ORDER BY m.created_at, m.id`, [userId])).rows;
 
@@ -332,7 +336,9 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const map = await findMap(b.mapId);
     if (!map) throw new HttpError(400, 'Mappa non trovata');
     const enemies = parseMissionEnemies(map, b.enemies);
-    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, track_id) VALUES ($1, $2, $3, $4, $5)', [name, b.mapId, b.gold, JSON.stringify(enemies), await trackId(b.trackId)]);
+    const recruit = parseRecruit(b.recruit);
+    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, recruit, track_id) VALUES ($1, $2, $3, $4, $5, $6)',
+      [name, b.mapId, b.gold, JSON.stringify(enemies), recruit && JSON.stringify(recruit), await trackId(b.trackId)]);
     return c.json(await listMissions(c.get('userId')));
   });
 
