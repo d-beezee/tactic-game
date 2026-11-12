@@ -166,7 +166,7 @@ class Editor {
     this.ui = { name, w, h, deploy, open, status, save, del, tools };
     this.root.replaceChildren(
       el('header', {},
-        el('button', { textContent: '← Menu', onclick: () => this.confirmDiscard() && toMenu() }),
+        el('button', { textContent: '← Officina', onclick: () => this.confirmDiscard() && toMenu('workshop') }),
         el('h2', { textContent: 'Editor mappe' }),
       ),
       el('section', {},

@@ -12,6 +12,7 @@ colors:
   brass-deep: "#8a6224"
   ember: "#ff8f3a"
   dusk: "#4a6b86"
+  dusk-hi: "#9db8cf"
   reach: "#7fd3e6"
   strike: "#ff7a59"
   mend: "#8fe08a"
@@ -72,7 +73,7 @@ components:
 
 HD-2D: sprite in pixel dentro un mondo con luce moderna. La battaglia è un plastico in miniatura sul tavolo del comandante, illuminato da un sole basso: luce calda in alto a sinistra, ombre fredde. L'audacia sta tutta nel mondo (terreno, luce, colpi). L'interfaccia è luce posata sopra il plastico: più sottile e più quieta del mondo, mai più pesante.
 
-Modi: la battaglia, la caserma e il negozio sono superfici da usare (leggibilità prima di tutto). Titolo e schermata di vittoria sono esperienza: lì si può osare.
+Modi: la battaglia, la caserma, il negozio e l'Officina sono superfici da usare (leggibilità prima di tutto). Titolo e schermata di vittoria sono esperienza: lì si può osare.
 
 ## Colors
 
@@ -86,7 +87,8 @@ Base calda e scura, testo pergamena, un solo accento d'ottone per l'azione princ
 - **Pergamena** `#f1e4c6` testo; **Cenere** `#b8a88c` testo secondario.
 
 ### Light
-- **Brace** `#ff8f3a`: luce del sole, alone dell'unità attiva. **Crepuscolo** `#4a6b86`: ombre, mai testo.
+- **Brace** `#ff8f3a`: luce del sole, alone dell'unità attiva. **Crepuscolo** `#4a6b86`: ombre, mai testo. Nell'Officina fa da cornice (bordo, griglia, striscia).
+- **Crepuscolo chiaro** `#9db8cf`: etichette e segni dell'Officina ("admin", gruppi, stato bozza). Solo lì.
 
 ### Game colours
 - **Portata** `#7fd3e6` movimento e caselle di schieramento, **Colpo** `#ff7a59` gittata d'attacco, **Cura** `#8fe08a` gittata di cura.
@@ -112,6 +114,13 @@ Titolo schermata 40–112 px, nome unità 24 px, testo 17 px, etichette 13–15 
 - Battaglia: timeline in alto a sinistra, rotazione in alto a destra, banner istruzioni centrato sotto la timeline, scheda unità in basso a sinistra, azioni in basso a destra, previsione sopra le azioni. La camera lascia libere queste zone (`battleInsets` in `BattleScene.ts`).
 - Menu: allineato a sinistra sopra la mappa demo viva, sfumata da sinistra. Su telefono il menu va a tutta larghezza con una sfumatura verticale.
 - Caserma e negozio: fondo scuro quasi opaco, griglia roster più dettaglio.
+
+### Officina (strumenti admin)
+- Area separata dal gioco: nel menu una sola voce "Officina", dopo un filetto, con bordo in crepuscolo e la parola "admin". Mai in ottone: non è l'azione principale.
+- Dentro: navigazione laterale (Contenuti: Campagna, Missioni, Mappe, Musiche; Persone: Utenti), striscia fissa "Le modifiche salvate valgono subito per tutti i giocatori", sfondo a griglia tenue in crepuscolo (il tavolo da disegno sotto il plastico).
+- Ogni editor: lista a sinistra con ricerca, editor a schede a destra, barra di salvataggio fissa in basso (nessuna modifica / modifiche non salvate / salvato alle HH:MM). Su telefono lista ed editor si alternano.
+- Campi con etichetta sopra, unità dentro il campo, aiuto sotto. Azioni irreversibili e cambi di ruolo chiedono un secondo tocco in riga, con il nome dell'oggetto e la conseguenza; niente `confirm()` del browser.
+- "Prova" gioca la bozza in locale, senza salvarla e senza ricompense, poi torna all'Officina.
 
 ## Elevation & Depth
 

@@ -8,8 +8,11 @@ import { hud, mountRotate } from './hud';
 import { music } from './music';
 import { leaveScreen, ownGame, toMenu } from './nav';
 
-/** A campaign chapter in play; onDone runs after the result screen, with the battle already torn down. */
-export interface ChapterRun { chapter: Chapter; onDone: (win: boolean) => void }
+/**
+ * A campaign chapter in play; onDone runs after the result screen, with the battle already torn down.
+ * rehearsal = an admin trying an unsaved draft: played locally, nothing is sent to the server.
+ */
+export interface ChapterRun { chapter: Chapter; onDone: (win: boolean) => void; rehearsal?: boolean; trackId?: string | null }
 
 /**
  * Deploy roster units on the map, then fight an AI team that fills the enemy spawns.
@@ -22,8 +25,10 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
   if (errors.length) throw new Error(`map invalid: ${errors.join('; ')}`);
   const enemies = ch ? missionUnits(ch.enemies) : mission ? missionUnits(mission.enemies) : testEnemies(roster, map);
   const target = ch ? { chapterId: ch.id } : missionId ? { missionId } : { mapId: map.id };
+  // a rehearsal goes back to where the admin left the draft
+  const back = run?.rehearsal ? () => { leaveScreen(); run.onDone(false); } : () => toMenu();
 
-  music('battle', mission?.trackId);
+  music('battle', mission?.trackId ?? run?.trackId);
   document.getElementById('hud')!.hidden = false;
   // the prologue is played on the brothers' monitor
   document.getElementById('game')!.classList.toggle('crt', !!ch?.crt);
@@ -38,11 +43,14 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
       hud.banner('Preparazione della battaglia…');
       let battle: Awaited<ReturnType<typeof api.battleStart>>;
       try {
-        battle = await api.battleStart(target, team.map(u => ({ id: u.id, pos: u.pos })));
+        battle = run?.rehearsal
+          ? { id: '', seed: Math.floor(Math.random() * 2 ** 32), units: [...team, ...enemies] }
+          : await api.battleStart(target, team.map(u => ({ id: u.id, pos: u.pos })));
+        if (run?.rehearsal) createBattle(map, battle.units, battle.seed, ch?.goal, ch?.required); // the checks the server would make
       } catch (e) {
         hud.banner(`Battaglia non avviata: ${(e as Error).message}`);
         return hud.buttons([
-          { label: 'Menu', icon: 'back', onClick: () => toMenu() },
+          { label: 'Menu', icon: 'back', onClick: back },
           { label: 'Riprova', primary: true, onClick: () => void begin(team) },
         ]);
       }
@@ -53,6 +61,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
       // prologue: the brothers take one unit each, in turn
       let turns = 0;
       new Controller(s, state, async actions => {
+        if (run?.rehearsal) return ['Prova: niente XP né oro, nulla è stato salvato.'];
         // the actions exist only here: retry before giving up, or a network blip loses the battle
         for (let attempt = 1; ; attempt++) {
           try {
@@ -79,7 +88,7 @@ export function startTestBattle(roster: RosterUnit[], map: MapData, mission?: Mi
         onDone: run && { label: 'Continua', run: win => { leaveScreen(); run.onDone(win); } },
       }).start();
     };
-    new Deploy(s, map, roster, team => void begin(team), 'A', () => toMenu(), ch?.required).start();
+    new Deploy(s, map, roster, team => void begin(team), 'A', back, ch?.required).start();
   });
   ownGame(new Phaser.Game({
     type: Phaser.AUTO,

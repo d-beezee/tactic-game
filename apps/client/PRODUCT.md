@@ -22,7 +22,7 @@ Le regole sono tutte in un core puro e deterministico condiviso da client e serv
 
 - Partite brevi, una battaglia di prova alla volta, su una mappa scelta.
 - Si gioca con mouse (hover per anteprime, Q/E per ruotare) o col tocco (pinch, trascinamento, tocchi).
-- L'admin usa l'editor di mappe e la lista utenti.
+- L'admin lavora nell'Officina, un'area separata dal menu del giocatore: campagna, missioni giornaliere, mappe, musiche e utenti. Può provare una bozza in battaglia prima di salvarla.
 
 ## Capabilities and Constraints
 
