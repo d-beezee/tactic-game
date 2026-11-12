@@ -1,6 +1,6 @@
 import {
-  CAMPAIGN, CLASSES, DEFAULT_RACE, RACES, STATUSES, allowedRaces, chapterOpen, DEFAULT_ROSTER, raceOf, unitActions, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
-  unlockedPassives, xpToReach, type ActionDef, type Chapter, type ItemDef, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
+  CLASSES, DEFAULT_RACE, FXS, SCENES, RACES, STATUSES, allowedRaces, chapterOpen, DEFAULT_ROSTER, raceOf, unitActions, ITEMS, isWalkable, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, PASSIVE_LEVEL, SLOTS, SLOT_LABELS, classLevel, freeCopies, itemBonus, missingRequirements, unitFromRoster,
+  unlockedPassives, xpToReach, type ActionDef, type Chapter, type ChapterInput, type Goal, type ItemDef, type Line, type Pos, type MapData, type MissionEnemy, type Player, type RosterUnit, type Stats, type UnitChange,
 } from '@tactics/core';
 import { api, ApiError, type Account, type Mission, type Music, type PvpState, type User } from './api';
 import { allMaps, BUILTIN_MAPS, loadMaps } from './maps';
@@ -92,6 +92,75 @@ const enemySummary = (enemies: MissionEnemy[]) => {
   const lv = enemies.map(e => e.level), lo = Math.min(...lv), hi = Math.max(...lv);
   return `${enemies.length === 1 ? '1 nemico' : `${enemies.length} nemici`}, livello ${lo === hi ? lo : `${lo}–${hi}`}`;
 };
+
+/**
+ * Enemy placement on a map: a brush (race, class, level) and one button per cell. A tap places or removes an enemy,
+ * or toggles a goal cell while `goal.editing()` is true. `onChange` runs after every tap.
+ */
+const enemyEditor = (
+  d: { enemies: MissionEnemy[]; raceId: string; classId: string; level: number }, current: () => MapData,
+  opts: { goal?: { cells: () => Pos[] | null; editing: () => boolean }; onChange?: () => void } = {},
+) => {
+  // classes follow the race: changing race keeps the class if that race can take it
+  const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } });
+  const fillClasses = () => {
+    const ok = Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(d.raceId));
+    if (!ok.some(c => c.id === d.classId)) d.classId = ok[0].id;
+    cls.replaceChildren(...ok.map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
+  };
+  fillClasses();
+  const race = el('select', { className: 'field', ariaLabel: 'Razza del prossimo nemico', onchange: () => { d.raceId = race.value; fillClasses(); } },
+    ...Object.values(RACES).map(r => el('option', { value: r.id, textContent: r.name, selected: r.id === d.raceId })));
+  const lvl = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.level), ariaLabel: 'Livello del prossimo nemico',
+    oninput: () => { d.level = Number(lvl.value); } });
+  const count = el('span', { className: 'hint' });
+  const hint = el('p', { className: 'hint' });
+  const grid = el('div', { className: 'enemy-grid' });
+
+  /** One button per cell: an empty walkable cell gets a new enemy, an enemy's cell loses it. */
+  const draw = () => {
+    const m = current(), goal = opts.goal?.cells() ?? [], editingGoal = !!opts.goal?.editing();
+    hint.textContent = editingGoal
+      ? 'Tocca le caselle da raggiungere per vincere, toccale di nuovo per toglierle.'
+      : 'Tocca una casella per piazzare un nemico, toccalo di nuovo per toglierlo. In blu le partenze del giocatore.';
+    grid.style.gridTemplateColumns = `repeat(${m.width}, 1fr)`;
+    grid.replaceChildren(...m.heights.flatMap((row, y) => row.map((h, x) => {
+      const i = d.enemies.findIndex(e => e.pos.x === x && e.pos.y === y);
+      const foe = d.enemies[i];
+      const mine = m.spawns.A.some(p => p.x === x && p.y === y);
+      const g = goal.findIndex(p => p.x === x && p.y === y);
+      const b = el('button', {
+        type: 'button', className: `cell t-${m.terrain[y][x]}${mine ? ' mine' : ''}${foe ? ' foe' : ''}${g >= 0 ? ' goal' : ''}`,
+        disabled: mine || !isWalkable(m, { x, y }),
+        title: foe ? `${foe.name ? `${foe.name}: ` : ''}${raceName(foe.raceId)} ${CLASSES[foe.classId].name}, livello ${foe.level}` : mine ? 'Partenza del giocatore' : g >= 0 ? 'Casella obiettivo' : `Altezza ${h}`,
+        textContent: foe ? `${CLASSES[foe.classId].name[0]}${foe.level}` : '',
+        onclick: () => {
+          if (editingGoal) {
+            if (g >= 0) goal.splice(g, 1);
+            else goal.push({ x, y });
+          } else if (foe) d.enemies.splice(i, 1);
+          else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: d.classId, ...(d.raceId !== DEFAULT_RACE ? { raceId: d.raceId } : {}), level: d.level, pos: { x, y } });
+          draw();
+          opts.onChange?.();
+        },
+      });
+      b.style.setProperty('--h', String(h));
+      return b;
+    })));
+    count.textContent = `${d.enemies.length === 1 ? '1 nemico' : `${d.enemies.length} nemici`}, massimo ${MAX_MISSION_ENEMIES}`;
+  };
+  draw();
+  const node = el('div', { className: 'enemy-editor' },
+    hint,
+    el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), race, cls, el('label', {}, 'livello ', lvl), count),
+    grid,
+  );
+  return { node, draw };
+};
+
+const GOAL_NAMES: Record<Goal['type'], string> = { rout: 'Sconfiggi tutti', survive: 'Sopravvivi', reach: 'Raggiungi le caselle', boss: 'Sconfiggi il boss' };
+const goalText = (g: Goal) => g.type === 'survive' ? `sopravvivi ${g.rounds === 1 ? '1 round' : `${g.rounds} round`}` : GOAL_NAMES[g.type].toLowerCase();
+const SCENE_NAMES: Record<Line['scene'], string> = { bedroom: 'Cameretta', crt: 'Monitor', map: 'Mappa', black: 'Nero' };
 
 /** Opens the menu, at start and on every return from a screen; 'campaign' lands on the chapter list. */
 export function showMenu(go: {
@@ -200,6 +269,7 @@ export function showMenu(go: {
         el('button', { className: 'menu-btn', textContent: 'Battaglia di prova', onclick: () => void pickMap() }),
         ...(player.admin ? [
           el('button', { className: 'menu-btn', textContent: 'Gestisci missioni', onclick: () => void manageMissions(api.missions()) }),
+          el('button', { className: 'menu-btn', textContent: 'Gestisci campagna', onclick: () => void manageCampaign(api.campaign().then(c => c.chapters)) }),
           el('button', { className: 'menu-btn', textContent: 'Musiche', onclick: () => void musicAdmin(api.music()) }),
           el('button', { className: 'menu-btn', textContent: 'Editor mappe', onclick: () => { leaveMenu(); go.editor(); } }),
           el('button', { className: 'menu-btn', textContent: 'Utenti', onclick: () => void users(api.users()) }),
@@ -312,15 +382,16 @@ export function showMenu(go: {
 
   /** The story, chapter by chapter: each opens when the one before is won, and pays once. */
   const campaign = async () => {
-    let cleared: string[];
+    let cleared: string[], chapters: Chapter[];
     try {
-      ({ cleared } = await api.campaign());
+      ({ cleared, chapters } = await api.campaign());
       error = '';
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return auth();
       error = (e as Error).message;
-      cleared = [];
+      [cleared, chapters] = [[], []];
     }
+    const order = chapters.map(c => c.id);
     root.replaceChildren(
       el('div', { className: 'barracks' },
         el('header', {},
@@ -329,11 +400,12 @@ export function showMenu(go: {
         ),
         errorLine(),
         el('div', { className: 'chapters' },
-          ...CAMPAIGN.map((ch, i) => {
-            const won = cleared.includes(ch.id), open = chapterOpen(cleared, ch.id);
-            const state = won ? 'Vinto · rigioca quando vuoi, senza ricompensa'
+          ...chapters.map((ch, i) => {
+            const won = cleared.includes(ch.id), open = chapterOpen(order, cleared, ch.id) && !!ch.map;
+            const state = !ch.map ? 'In manutenzione: manca la mappa'
+              : won ? 'Vinto · rigioca quando vuoi, senza ricompensa'
               : open ? `+${ch.gold} oro e XP alla prima vittoria${ch.unlock ? ' · un nuovo alleato' : ''}`
-              : `Vinci prima «${CAMPAIGN[i - 1].title}»`;
+              : `Vinci prima «${chapters[i - 1].title}»`;
             return el('button', {
               className: `chapter${won ? ' won' : open ? ' next' : ''}`, disabled: !open,
               onclick: () => { play('select'); leaveMenu(); go.campaign(player.roster, ch); },
@@ -397,7 +469,7 @@ export function showMenu(go: {
     const current = () => maps.find(m => m.id === d.mapId)!;
 
     const name = el('input', { className: 'field', placeholder: 'Nome della missione', ariaLabel: 'Nome della missione', maxLength: 60, required: true, value: d.name, oninput: () => { d.name = name.value; } });
-    const map = el('select', { className: 'field', ariaLabel: 'Mappa', onchange: () => { d.mapId = map.value; d.enemies = defaultEnemies(current()); drawGrid(); } },
+    const map = el('select', { className: 'field', ariaLabel: 'Mappa', onchange: () => { d.mapId = map.value; d.enemies = defaultEnemies(current()); foes.draw(); } },
       ...maps.map(m => el('option', { value: m.id, textContent: m.name, selected: m.id === d.mapId })));
     const gold = el('input', { className: 'field', type: 'number', min: '0', max: '10000', step: '1', value: String(d.gold), ariaLabel: 'Oro', oninput: () => { d.gold = Number(gold.value); } });
     const tracks = getLibrary().tracks;
@@ -405,17 +477,6 @@ export function showMenu(go: {
     const track = el('select', { className: 'field', ariaLabel: 'Musica', onchange: () => { d.trackId = track.value || null; } },
       el('option', { value: '', textContent: 'Musica: quella delle battaglie' }),
       ...tracks.map(t => el('option', { value: t.id, textContent: `Musica: ${t.name}`, selected: t.id === d.trackId })));
-    // classes follow the race: changing race keeps the class if that race can take it
-    const cls = el('select', { className: 'field', ariaLabel: 'Classe del prossimo nemico', onchange: () => { d.classId = cls.value; } });
-    const fillClasses = () => {
-      const ok = Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(d.raceId));
-      if (!ok.some(c => c.id === d.classId)) d.classId = ok[0].id;
-      cls.replaceChildren(...ok.map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === d.classId })));
-    };
-    fillClasses();
-    const race = el('select', { className: 'field', ariaLabel: 'Razza del prossimo nemico', onchange: () => { d.raceId = race.value; fillClasses(); } },
-      ...Object.values(RACES).map(r => el('option', { value: r.id, textContent: r.name, selected: r.id === d.raceId })));
-
     const rc = d.recruit;
     const recruitName = el('input', { className: 'field', placeholder: 'Nome della recluta', ariaLabel: 'Nome della recluta', maxLength: 20, value: rc.name, oninput: () => { rc.name = recruitName.value; } });
     const recruitClass = el('select', { className: 'field', ariaLabel: 'Classe della recluta', onchange: () => { rc.classId = recruitClass.value; } });
@@ -430,44 +491,11 @@ export function showMenu(go: {
     const recruitFields = el('div', { className: 'brush', hidden: !rc.on }, recruitName, recruitRace, recruitClass);
     const recruitOn = el('input', { type: 'checkbox', checked: rc.on, onchange: () => { rc.on = recruitOn.checked; recruitFields.hidden = !rc.on; recruitName.required = rc.on; } });
     recruitName.required = rc.on;
-    const lvl = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.level), ariaLabel: 'Livello del prossimo nemico',
-      oninput: () => { d.level = Number(lvl.value); } });
-    const count = el('span', { className: 'hint' });
-    const grid = el('div', { className: 'enemy-grid' });
-
-    /** One button per cell: an empty walkable cell gets a new enemy, an enemy's cell loses it. */
-    const drawGrid = () => {
-      const m = current();
-      grid.style.gridTemplateColumns = `repeat(${m.width}, 1fr)`;
-      grid.replaceChildren(...m.heights.flatMap((row, y) => row.map((h, x) => {
-        const i = d.enemies.findIndex(e => e.pos.x === x && e.pos.y === y);
-        const foe = d.enemies[i];
-        const mine = m.spawns.A.some(p => p.x === x && p.y === y);
-        const b = el('button', {
-          type: 'button', className: `cell t-${m.terrain[y][x]}${mine ? ' mine' : ''}${foe ? ' foe' : ''}`,
-          disabled: mine || !isWalkable(m, { x, y }),
-          title: foe ? `${raceName(foe.raceId)} ${CLASSES[foe.classId].name}, livello ${foe.level}` : mine ? 'Partenza del giocatore' : `Altezza ${h}`,
-          textContent: foe ? `${CLASSES[foe.classId].name[0]}${foe.level}` : '',
-          onclick: () => {
-            if (foe) d.enemies.splice(i, 1);
-            else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: d.classId, ...(d.raceId !== DEFAULT_RACE ? { raceId: d.raceId } : {}), level: d.level, pos: { x, y } });
-            drawGrid();
-          },
-        });
-        b.style.setProperty('--h', String(h));
-        return b;
-      })));
-      count.textContent = `${d.enemies.length === 1 ? '1 nemico' : `${d.enemies.length} nemici`}, massimo ${MAX_MISSION_ENEMIES}`;
-    };
-    drawGrid();
+    const foes = enemyEditor(d, current);
 
     const form = el('form', { className: 'mission-form' },
       name, map, el('label', {}, gold, ' oro'), track,
-      el('div', { className: 'enemy-editor' },
-        el('p', { className: 'hint', textContent: 'Tocca una casella per piazzare un nemico, toccalo di nuovo per toglierlo. In blu le partenze del giocatore.' }),
-        el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Prossimo nemico:' }), race, cls, el('label', {}, 'livello ', lvl), count),
-        grid,
-      ),
+      foes.node,
       el('div', { className: 'enemy-editor' },
         el('label', { className: 'hint' }, recruitOn, ' Alla prima vittoria si unisce una recluta'),
         recruitFields,
@@ -510,6 +538,185 @@ export function showMenu(go: {
             el('button', {
               className: 'back', textContent: 'Elimina',
               onclick: () => confirm(`Eliminare la missione "${m.name}"?`) && void manageMissions(api.deleteMission(m.id), list),
+            }),
+          )),
+        ),
+      ),
+    );
+  };
+
+  /** Admin only: create, edit, reorder and delete campaign chapters. The draft survives the redraw after a failed save. */
+  type ChapterDraft = Omit<ChapterInput, 'goal' | 'unlock'> & {
+    id: string | null; mapId: string; raceId: string; classId: string; level: number;
+    goalType: Goal['type']; rounds: number; cells: Pos[]; boss: number; editingCells: boolean;
+    unlockOn: boolean; unlock: Omit<RosterUnit, 'id'>; unlockLevel: number;
+  };
+  let chapterDraft: ChapterDraft | null = null;
+  const newUnlock = (): Omit<RosterUnit, 'id'> => ({ name: '', classId: 'warrior', xp: { warrior: xpToReach(3) }, passive: null });
+  const toDraft = (ch: Chapter | null, mapId: string, map: MapData): ChapterDraft => {
+    const g = ch?.goal ?? { type: 'rout' };
+    const { id: _, ...unlock } = ch?.unlock ?? { id: '', ...newUnlock() };
+    return {
+      id: ch?.id ?? null, mapId, label: ch?.label ?? '', title: ch?.title ?? '', blurb: ch?.blurb ?? '', gold: ch?.gold ?? 150, crt: !!ch?.crt,
+      enemies: ch ? ch.enemies.map(e => ({ ...e, pos: { ...e.pos } })) : defaultEnemies(map), required: [...(ch?.required ?? [])],
+      before: (ch?.before ?? []).map(l => ({ ...l })), after: (ch?.after ?? []).map(l => ({ ...l })),
+      raceId: DEFAULT_RACE, classId: 'warrior', level: 1,
+      goalType: g.type, rounds: g.type === 'survive' ? g.rounds : 5, cells: g.type === 'reach' ? g.cells.map(c => ({ ...c })) : [],
+      boss: g.type === 'boss' ? Number(g.unitId.slice(5)) : 0, editingCells: false,
+      unlockOn: !!ch?.unlock, unlock, unlockLevel: classLevel({ id: '', ...unlock }, unlock.classId),
+    };
+  };
+
+  const manageCampaign = async (request: Promise<Chapter[]>, shown: Chapter[] = []) => {
+    let list: Chapter[];
+    try {
+      [list] = await Promise.all([request, loadMaps(player.admin)]);
+      error = '';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return auth();
+      error = (e as Error).message;
+      list = shown;
+    }
+    const maps = allMaps().filter(m => !BUILTIN_MAPS.some(b => b.id === m.id));
+    if (!maps.length) {
+      error = 'Prima crea una mappa con l\'editor mappe';
+      return root.replaceChildren(el('div', { className: 'barracks' }, el('header', {}, el('button', { className: 'back', textContent: '← Menu', onclick: main }), el('h2', { textContent: 'Gestisci campagna' })), errorLine()));
+    }
+    if (chapterDraft?.id && !list.some(c => c.id === chapterDraft!.id)) chapterDraft = null;
+    if (!chapterDraft || !maps.some(m => m.id === chapterDraft!.mapId)) chapterDraft = toDraft(null, maps[0].id, maps[0]);
+    const d = chapterDraft;
+    const current = () => maps.find(m => m.id === d.mapId)!;
+    const redraw = () => void manageCampaign(Promise.resolve(list), list);
+
+    const input = (label: string, key: 'label' | 'title' | 'blurb', max: number) => {
+      const i = el('input', { className: 'field', placeholder: label, ariaLabel: label, maxLength: max, required: true, value: d[key], oninput: () => { d[key] = i.value; } });
+      return i;
+    };
+    const map = el('select', { className: 'field', ariaLabel: 'Mappa', onchange: () => { d.mapId = map.value; d.enemies = defaultEnemies(current()); d.cells = []; redraw(); } },
+      ...maps.map(m => el('option', { value: m.id, textContent: m.name, selected: m.id === d.mapId })));
+    const gold = el('input', { className: 'field', type: 'number', min: '0', max: '10000', step: '1', value: String(d.gold), ariaLabel: 'Oro', oninput: () => { d.gold = Number(gold.value); } });
+    const crt = el('input', { type: 'checkbox', checked: d.crt, onchange: () => { d.crt = crt.checked; } });
+
+    // goal: the boss list follows the enemies, the cells are picked on the grid
+    const boss = el('select', { className: 'field', ariaLabel: 'Boss', onchange: () => { d.boss = Number(boss.value); } });
+    const fillBoss = () => {
+      if (d.boss >= d.enemies.length) d.boss = 0;
+      boss.replaceChildren(...d.enemies.map((e, i) => el('option', {
+        value: String(i), selected: i === d.boss, textContent: `Boss: ${e.name ?? `${raceName(e.raceId)} ${CLASSES[e.classId].name}`}, livello ${e.level} (${e.pos.x},${e.pos.y})`,
+      })));
+    };
+    const foes = enemyEditor(d, current, { goal: { cells: () => d.goalType === 'reach' ? d.cells : null, editing: () => d.goalType === 'reach' && d.editingCells }, onChange: fillBoss });
+    fillBoss();
+    const rounds = el('input', { className: 'field', type: 'number', min: '1', max: '30', step: '1', value: String(d.rounds), ariaLabel: 'Round', oninput: () => { d.rounds = Number(rounds.value); } });
+    const cellsToggle = el('button', {
+      type: 'button', className: 'back', ariaPressed: String(d.editingCells),
+      textContent: d.editingCells ? 'Fatto: torna ai nemici' : `Scegli le caselle (${d.cells.length})`,
+      onclick: () => { d.editingCells = !d.editingCells; redraw(); },
+    });
+    const goalType = el('select', { className: 'field', ariaLabel: 'Obiettivo', onchange: () => { d.goalType = goalType.value as Goal['type']; d.editingCells = false; redraw(); } },
+      ...(Object.keys(GOAL_NAMES) as Goal['type'][]).map(t => el('option', { value: t, textContent: `Obiettivo: ${GOAL_NAMES[t]}`, selected: t === d.goalType })));
+    const goalExtra = d.goalType === 'survive' ? [el('label', {}, rounds, ' round')] : d.goalType === 'boss' ? [boss] : d.goalType === 'reach' ? [cellsToggle] : [];
+
+    // required units: the starting roster plus what the chapters before this one unlock
+    const at = d.id ? list.findIndex(c => c.id === d.id) : list.length;
+    const pool = [...DEFAULT_ROSTER, ...list.slice(0, at).flatMap(c => c.unlock ? [c.unlock] : [])];
+    const required = el('div', { className: 'brush' }, el('span', { className: 'hint', textContent: 'Devono combattere:' }),
+      ...pool.map(u => {
+        const box = el('input', { type: 'checkbox', checked: d.required.includes(u.id), onchange: () => { d.required = box.checked ? [...d.required, u.id] : d.required.filter(id => id !== u.id); } });
+        return el('label', {}, box, ` ${u.name}`);
+      }));
+
+    // the unlock keeps its XP until its class or level changes, so a multi-class unit survives a text edit
+    const un = d.unlock;
+    const resetXp = () => { un.xp = { [un.classId]: xpToReach(d.unlockLevel) }; };
+    const unName = el('input', { className: 'field', placeholder: 'Nome dell\'alleato', ariaLabel: 'Nome dell\'alleato', maxLength: 20, value: un.name, oninput: () => { un.name = unName.value; } });
+    const unClass = el('select', { className: 'field', ariaLabel: 'Classe dell\'alleato', onchange: () => { un.classId = unClass.value; resetXp(); } });
+    const fillUnClasses = () => {
+      const ok = baseClassesOf(un.raceId ?? DEFAULT_RACE);
+      if (!ok.some(c => c.id === un.classId) && !allowedRaces(un.classId).includes(un.raceId ?? DEFAULT_RACE)) { un.classId = ok[0].id; resetXp(); }
+      const opts = ok.some(c => c.id === un.classId) ? ok : [CLASSES[un.classId], ...ok];
+      unClass.replaceChildren(...opts.map(c => el('option', { value: c.id, textContent: c.name, selected: c.id === un.classId })));
+    };
+    fillUnClasses();
+    const unRace = el('select', { className: 'field', ariaLabel: 'Razza dell\'alleato', onchange: () => { un.raceId = unRace.value; fillUnClasses(); } },
+      ...Object.values(RACES).map(r => el('option', { value: r.id, textContent: r.name, selected: r.id === (un.raceId ?? DEFAULT_RACE) })));
+    const unLevel = el('input', { className: 'field', type: 'number', min: '1', max: String(MAX_CLASS_LEVEL), step: '1', value: String(d.unlockLevel), ariaLabel: 'Livello dell\'alleato',
+      oninput: () => { d.unlockLevel = Number(unLevel.value); resetXp(); } });
+    const unFields = el('div', { className: 'brush', hidden: !d.unlockOn }, unName, unRace, unClass, el('label', {}, 'livello ', unLevel));
+    const unOn = el('input', { type: 'checkbox', checked: d.unlockOn, onchange: () => { d.unlockOn = unOn.checked; unFields.hidden = !d.unlockOn; unName.required = d.unlockOn; } });
+    unName.required = d.unlockOn;
+
+    /** One row per line of a cutscene; the block redraws itself so typing elsewhere keeps its focus. */
+    const linesEditor = (lines: Line[], title: string) => {
+      const box = el('div', { className: 'enemy-editor' });
+      const draw = () => box.replaceChildren(
+        el('span', { className: 'hint', textContent: `${title} · ${lines.length === 1 ? '1 battuta' : `${lines.length} battute`}` }),
+        ...lines.map((l, i) => {
+          const scene = el('select', { className: 'field', ariaLabel: 'Scena', onchange: () => { l.scene = scene.value as Line['scene']; } },
+            ...SCENES.map(sc => el('option', { value: sc, textContent: SCENE_NAMES[sc], selected: sc === l.scene })));
+          const who = el('input', { className: 'field', placeholder: 'Narratore', ariaLabel: 'Chi parla', maxLength: 20, value: l.who ?? '', oninput: () => { if (who.value.trim()) l.who = who.value; else delete l.who; } });
+          const text = el('input', { className: 'field line-text', placeholder: 'Testo', ariaLabel: 'Testo', maxLength: 200, required: true, value: l.text, oninput: () => { l.text = text.value; } });
+          const fx = el('select', { className: 'field', ariaLabel: 'Effetto', onchange: () => { if (fx.value) l.fx = fx.value as Line['fx']; else delete l.fx; } },
+            el('option', { value: '', textContent: 'Nessun effetto' }), ...FXS.map(f => el('option', { value: f, textContent: f, selected: f === l.fx })));
+          const move = (to: number) => { [lines[i], lines[to]] = [lines[to], lines[i]]; draw(); };
+          return el('div', { className: 'brush line-row' }, scene, who, text, fx,
+            el('button', { type: 'button', className: 'back', textContent: '↑', ariaLabel: 'Sposta su', disabled: i === 0, onclick: () => move(i - 1) }),
+            el('button', { type: 'button', className: 'back', textContent: '↓', ariaLabel: 'Sposta giù', disabled: i === lines.length - 1, onclick: () => move(i + 1) }),
+            el('button', { type: 'button', className: 'back', textContent: '✕', ariaLabel: 'Elimina battuta', onclick: () => { lines.splice(i, 1); draw(); } }),
+          );
+        }),
+        el('button', { type: 'button', className: 'back', textContent: '+ battuta', onclick: () => { lines.push({ scene: lines.at(-1)?.scene ?? 'map', text: '' }); draw(); } }),
+      );
+      draw();
+      return box;
+    };
+
+    const form = el('form', { className: 'mission-form' },
+      input('Etichetta, es. Capitolo 4', 'label', 30), input('Titolo', 'title', 60), input('Descrizione di una riga', 'blurb', 160),
+      map, el('label', {}, gold, ' oro'), el('label', { className: 'hint' }, crt, ' Dentro il monitor della cameretta'),
+      goalType, ...goalExtra,
+      foes.node,
+      required,
+      el('div', { className: 'enemy-editor' }, el('label', { className: 'hint' }, unOn, ' Alla prima vittoria si unisce un alleato'), unFields),
+      linesEditor(d.before, 'Prima della battaglia'),
+      linesEditor(d.after, 'Dopo la vittoria'),
+      ...(d.id ? [el('button', { className: 'menu-btn', type: 'button', textContent: 'Annulla modifica', onclick: () => { chapterDraft = null; redraw(); } })] : []),
+      el('button', { className: 'menu-btn primary', type: 'submit', textContent: d.id ? 'Salva capitolo' : 'Crea capitolo' }),
+    );
+    form.onsubmit = e => {
+      e.preventDefault();
+      const goal: Goal = d.goalType === 'survive' ? { type: 'survive', rounds: d.rounds } : d.goalType === 'reach' ? { type: 'reach', cells: d.cells }
+        : d.goalType === 'boss' ? { type: 'boss', unitId: `enemy${d.boss}` } : { type: 'rout' };
+      const c = {
+        mapId: d.mapId, label: d.label, title: d.title, blurb: d.blurb, gold: d.gold, crt: d.crt, enemies: d.enemies, goal,
+        required: d.required, unlock: d.unlockOn ? d.unlock : null, before: d.before, after: d.after,
+      };
+      void manageCampaign((d.id ? api.updateChapter(d.id, c) : api.createChapter(c)).then(l => { chapterDraft = null; return l; }), list);
+    };
+    const edit = (ch: Chapter) => {
+      const m = maps.find(x => x.id === ch.mapId) ?? maps[0];
+      chapterDraft = toDraft(ch, m.id, m);
+      redraw();
+      window.scrollTo(0, 0);
+    };
+    root.replaceChildren(
+      el('div', { className: 'barracks' },
+        el('header', {},
+          el('button', { className: 'back', textContent: '← Menu', onclick: main }),
+          el('h2', { textContent: `Gestisci campagna · ${list.length === 1 ? '1 capitolo' : `${list.length} capitoli`}` }),
+        ),
+        errorLine(),
+        form,
+        el('div', { className: 'user-list' },
+          ...list.map((ch, i) => el('div', { className: 'user-row' },
+            el('span', { className: 'rn', textContent: `${ch.label} · ${ch.title}` }),
+            el('span', { className: 'rc', textContent: `${mapName(ch.mapId) ?? 'mappa mancante'} · ${goalText(ch.goal)} · +${ch.gold} oro · ${enemySummary(ch.enemies)}${ch.unlock ? ` · sblocca ${ch.unlock.name}` : ''}` }),
+            el('button', { className: 'back', textContent: '↑', ariaLabel: 'Sposta prima', disabled: i === 0, onclick: () => void manageCampaign(api.moveChapter(ch.id, -1), list) }),
+            el('button', { className: 'back', textContent: '↓', ariaLabel: 'Sposta dopo', disabled: i === list.length - 1, onclick: () => void manageCampaign(api.moveChapter(ch.id, 1), list) }),
+            el('button', { className: 'back', textContent: 'Modifica', onclick: () => edit(ch) }),
+            el('button', {
+              className: 'back', textContent: 'Elimina',
+              onclick: () => confirm(`Eliminare il capitolo "${ch.title}"? Chi l'ha già vinto tiene ricompense e alleato.`) && void manageCampaign(api.deleteChapter(ch.id), list),
             }),
           )),
         ),

@@ -1,7 +1,7 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { activeUnit, addRecruit, apply, buyItem, chapterById, chapterOpen, chapterUnits, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, parseRecruit, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type MapData, type Player } from '@tactics/core';
+import { activeUnit, addRecruit, apply, buyItem, campaignErrors, chapterOpen, chapterUnits, MAX_MISSION_GOLD, parseChapter, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, parseRecruit, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type Chapter, type MapData, type Player } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -16,7 +16,6 @@ import { ensureAdmin, tx } from './db';
 const COOKIE = 'sid';
 const SESSION_DAYS = 30;
 const MAX_FAILS = 10, FAIL_WINDOW_MS = 15 * 60_000;
-const MAX_MISSION_GOLD = 10_000;
 const MAX_TRACK_CODE = 20_000;
 const MUSIC_SLOTS = ['menu', 'battle'];
 /** The game's day, for daily missions: midnight in Italy, whatever the server's time zone. */
@@ -168,19 +167,27 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     return c.json((await mutate(c.get('userId'), p => ({ player: buyItem(p, itemId) }))).player);
   });
 
+  const CHAPTER_COLS = `c.id, c.label, c.title, c.blurb, c.map_id AS "mapId", c.gold, c.enemies, c.goal, c.required, c.unlock, c.crt, c.before, c.after`;
+  /** Campaign chapters in play order, each with its map (undefined if the map is gone). */
+  const listChapters = async (db: pg.Pool | pg.PoolClient = pool): Promise<Chapter[]> => (await db.query(
+    `SELECT ${CHAPTER_COLS}, m.data AS map FROM chapters c LEFT JOIN maps m ON m.id = c.map_id ORDER BY c.position, c.id`)).rows;
+  const chapterRow = async (db: pg.PoolClient, id: string): Promise<Chapter | undefined> =>
+    (await db.query(`SELECT ${CHAPTER_COLS} FROM chapters c WHERE c.id = $1`, [id])).rows[0];
+
   // The server hands out the battle (seed and starting units) and later replays the player's actions:
   // XP and gold come from that replay, never from what the client says happened.
   app.post('/api/battles', async c => {
     const b = await body(c);
     const userId = c.get('userId');
     const { rows: [user] } = await pool.query('SELECT roster FROM users WHERE id = $1', [userId]);
-    let map: MapData | undefined, units, missionId = null, chapterId = null;
+    let map: MapData | undefined, units, missionId = null, chapterId = null, goal = null, protect = null;
     if (b.chapterId !== undefined) {
-      // a campaign chapter: map, enemies and goal all come from the core's CAMPAIGN
-      const ch = chapterById(b.chapterId);
-      if (!ch) throw new HttpError(404, 'Capitolo non trovato');
-      if (!chapterOpen(await clearedChapters(userId), ch.id)) throw new HttpError(400, 'Capitolo ancora chiuso: vinci prima quello prima');
-      [map, units, chapterId] = [ch.map, chapterUnits(user.roster, ch, b.deploy), ch.id];
+      // a campaign chapter: map, enemies and goal all come from the server's chapters
+      const chapters = await listChapters();
+      const ch = chapters.find(x => x.id === b.chapterId);
+      if (!ch?.map) throw new HttpError(404, 'Capitolo non trovato');
+      if (!chapterOpen(chapters.map(x => x.id), await clearedChapters(userId), ch.id)) throw new HttpError(400, 'Capitolo ancora chiuso: vinci prima quello prima');
+      [map, units, chapterId, goal, protect] = [ch.map, chapterUnits(user.roster, ch, b.deploy), ch.id, ch.goal, ch.required];
     } else {
       // a mission brings its own map; the map always comes from the server's copy, never from the client
       let mapId = b.mapId, mission: { id: string; enemies: unknown } | null = null;
@@ -199,8 +206,8 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     return c.json(await tx(pool, async db => {
       // one battle at a time: starting a new one drops the old ones, finished or abandoned
       await db.query('DELETE FROM battles WHERE user_id = $1', [userId]);
-      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units, mission_id, chapter_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-        [userId, seed, JSON.stringify(map), JSON.stringify(units), missionId, chapterId]);
+      const { rows } = await db.query('INSERT INTO battles (user_id, seed, map, units, mission_id, chapter_id, goal, protect) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [userId, seed, JSON.stringify(map), JSON.stringify(units), missionId, chapterId, goal && JSON.stringify(goal), protect && JSON.stringify(protect)]);
       return { id: rows[0].id, seed, units };
     }));
   });
@@ -210,20 +217,21 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     const id = c.req.param('id'), userId = c.get('userId');
     if (!isUuid(id)) throw new HttpError(404, 'Battaglia non trovata');
     return c.json(await tx(pool, async db => {
-      const { rows: [battle] } = await db.query('SELECT seed, map, units, result, mission_id, chapter_id FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
+      const { rows: [battle] } = await db.query('SELECT seed, map, units, result, mission_id, chapter_id, goal, protect FROM battles WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
       if (!battle) throw new HttpError(404, 'Battaglia non trovata: ne hai iniziata un\'altra?');
       // a retry after a lost response gets the same answer and no second payout
       if (battle.result) return battle.result;
-      const ch = battle.chapter_id ? chapterById(battle.chapter_id) : undefined;
-      const end = replayTestBattle(battle.map, battle.units, Number(battle.seed), actions, ch?.goal, ch?.required);
+      // gold and unlock as the chapter is now; goal and protect as they were when the battle started
+      const ch = battle.chapter_id ? await chapterRow(db, battle.chapter_id) : undefined;
+      const end = replayTestBattle(battle.map, battle.units, Number(battle.seed), actions, battle.goal ?? ch?.goal, battle.protect ?? ch?.required);
       const won = end.winner === 'A';
-      if (ch) {
-        // a chapter pays and unlocks its unit on the first win only; the insert is the check
-        const { rowCount } = won ? await db.query('INSERT INTO campaign_wins (user_id, chapter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, ch.id]) : { rowCount: 0 };
+      if (battle.chapter_id) {
+        // a chapter pays and unlocks its unit on the first win only; the insert is the check. A deleted chapter does not pay
+        const { rowCount } = won && ch ? await db.query('INSERT INTO campaign_wins (user_id, chapter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, ch.id]) : { rowCount: 0 };
         const out = rowCount
           ? { ...await mutateIn(db, userId, p => {
-              const r = payBattle(p, battle.units, end, ch.gold);
-              const unlock = ch.unlock && !r.player.roster.some(u => u.id === ch.unlock!.id) ? ch.unlock : undefined;
+              const r = payBattle(p, battle.units, end, ch!.gold);
+              const unlock = ch!.unlock && !r.player.roster.some(u => u.id === ch!.unlock!.id) ? ch!.unlock : undefined;
               return { ...r, player: unlock ? { ...r.player, roster: [...r.player.roster, unlock] } : r.player, unlocked: unlock?.name ?? null };
             }), won, paid: true }
           : { report: [], gold: 0, won, paid: false, unlocked: null };
@@ -262,7 +270,7 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   const clearedChapters = async (userId: string): Promise<string[]> =>
     (await pool.query('SELECT chapter_id FROM campaign_wins WHERE user_id = $1', [userId])).rows.map(r => r.chapter_id);
 
-  app.get('/api/campaign', async c => c.json({ cleared: await clearedChapters(c.get('userId')) }));
+  app.get('/api/campaign', async c => c.json({ chapters: await listChapters(), cleared: await clearedChapters(c.get('userId')) }));
 
   const listMaps = async () => (await pool.query("SELECT data FROM maps ORDER BY data->>'name', id")).rows.map(r => r.data as MapData);
 
@@ -324,6 +332,8 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   app.delete('/api/admin/maps/:id', async c => {
     const { rows: [used] } = await pool.query('SELECT name FROM missions WHERE map_id = $1 LIMIT 1', [c.req.param('id')]);
     if (used) throw new HttpError(409, `La mappa è usata dalla missione "${used.name}": elimina prima la missione`);
+    const { rows: [inCampaign] } = await pool.query('SELECT title FROM chapters WHERE map_id = $1 LIMIT 1', [c.req.param('id')]);
+    if (inCampaign) throw new HttpError(409, `La mappa è usata dal capitolo "${inCampaign.title}": cambia prima la mappa del capitolo`);
     await pool.query('DELETE FROM maps WHERE id = $1', [c.req.param('id')]);
     return c.json(await listMaps());
   });
@@ -359,6 +369,66 @@ export function createApp(pool: pg.Pool, staticDir: string) {
     if (isUuid(id)) await pool.query('DELETE FROM missions WHERE id = $1', [id]);
     return c.json(await listMissions(c.get('userId')));
   });
+
+  /** Runs a change to the campaign; it is undone if the campaign, in its new order, no longer holds together. */
+  const campaignChange = (fn: (db: pg.PoolClient) => Promise<unknown>) => tx(pool, async db => {
+    await db.query('LOCK TABLE chapters IN EXCLUSIVE MODE');
+    await fn(db);
+    const chapters = await listChapters(db);
+    const [problem] = campaignErrors(chapters);
+    if (problem) throw new HttpError(400, problem);
+    return chapters;
+  });
+
+  const chapterBody = async (c: Context) => {
+    const b = await body(c);
+    const map = await findMap(b.mapId);
+    if (!map || b.mapId === BUILTIN_MAP.id) throw new HttpError(400, 'Mappa non trovata');
+    return { mapId: b.mapId as string, ch: parseChapter(map, b) };
+  };
+  const chapterValues = (mapId: string, ch: ReturnType<typeof parseChapter>, unlockId: string) => [
+    ch.label, ch.title, ch.blurb, mapId, ch.gold, JSON.stringify(ch.enemies), JSON.stringify(ch.goal), JSON.stringify(ch.required),
+    ch.unlock && JSON.stringify({ id: unlockId, ...ch.unlock }), ch.crt, JSON.stringify(ch.before), JSON.stringify(ch.after)];
+
+  app.post('/api/admin/chapters', async c => {
+    const { mapId, ch } = await chapterBody(c);
+    return c.json(await campaignChange(async db => {
+      const id = randomUUID();
+      await db.query(
+        `INSERT INTO chapters (id, position, label, title, blurb, map_id, gold, enemies, goal, required, unlock, crt, before, after)
+         VALUES ($1, (SELECT coalesce(max(position) + 1, 0) FROM chapters), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [id, ...chapterValues(mapId, ch, `u-${id}`)]);
+    }));
+  });
+
+  // the unlock keeps its id, so the chapters that require it and the rosters that hold it stay valid
+  app.put('/api/admin/chapters/:id', async c => {
+    const { mapId, ch } = await chapterBody(c), id = c.req.param('id');
+    return c.json(await campaignChange(async db => {
+      const { rows: [old] } = await db.query('SELECT unlock FROM chapters WHERE id = $1', [id]);
+      if (!old) throw new HttpError(404, 'Capitolo non trovato');
+      await db.query(
+        `UPDATE chapters SET label = $2, title = $3, blurb = $4, map_id = $5, gold = $6, enemies = $7, goal = $8, required = $9, unlock = $10, crt = $11, before = $12, after = $13
+         WHERE id = $1`, [id, ...chapterValues(mapId, ch, old.unlock?.id ?? `u-${id}`)]);
+    }));
+  });
+
+  app.post('/api/admin/chapters/:id/move', async c => {
+    const { dir } = await body(c), id = c.req.param('id');
+    if (dir !== -1 && dir !== 1) throw new HttpError(400, 'Richiesta non valida');
+    return c.json(await campaignChange(async db => {
+      const ids = (await db.query('SELECT id FROM chapters ORDER BY position, id')).rows.map(r => r.id as string);
+      const i = ids.indexOf(id), j = i + dir;
+      if (i < 0) throw new HttpError(404, 'Capitolo non trovato');
+      if (j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      await db.query('UPDATE chapters SET position = array_position($1::text[], id) - 1', [ids]);
+    }));
+  });
+
+  // campaign_wins rows stay: a player who won it keeps the next chapter open only if it follows one they won
+  app.delete('/api/admin/chapters/:id', async c =>
+    c.json(await campaignChange(db => db.query('DELETE FROM chapters WHERE id = $1', [c.req.param('id')]))));
 
   // the code runs in every player's browser: only admins can save it
   const trackBody = async (c: Context) => {

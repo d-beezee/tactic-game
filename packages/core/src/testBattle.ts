@@ -21,6 +21,7 @@ export function testEnemies(roster: RosterUnit[], map: MapData): Unit[] {
 /** An enemy a daily mission places on its map. */
 export interface MissionEnemy { classId: string; /** DEFAULT_RACE if missing */ raceId?: string; level: number; pos: Pos; /** campaign only: a named enemy, e.g. a boss */ name?: string }
 export const MAX_MISSION_ENEMIES = 12;
+export const MAX_MISSION_GOLD = 10_000;
 
 /** Untrusted enemy list of a mission, checked against its map. Throws PlayerError with the first problem. */
 export function parseMissionEnemies(map: MapData, data: unknown): MissionEnemy[] {

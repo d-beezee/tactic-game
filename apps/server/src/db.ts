@@ -1,7 +1,8 @@
+import { CAMPAIGN_SEED } from '@tactics/core';
 import pg from 'pg';
 
 /** Append only: a migration that already ran in production must never change. */
-const MIGRATIONS = [
+const MIGRATIONS: (string | ((db: pg.PoolClient) => Promise<void>))[] = [
   `CREATE TABLE users (
      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      email text NOT NULL UNIQUE,
@@ -148,6 +149,36 @@ $: s("bd ~ bd [~ bd], ~ sd ~ sd, hh*8")
    INSERT INTO music_slots SELECT CASE name WHEN 'Rovine al tramonto' THEN 'menu' ELSE 'battle' END, id FROM t;`,
   // a unit the mission adds to the roster on the player's first win: { name, raceId, classId }, checked by parseRecruit
   `ALTER TABLE missions ADD COLUMN recruit jsonb;`,
+  // campaign chapters, edited by the admin; a battle keeps the goal it started with, whatever happens to the chapter
+  `CREATE TABLE chapters (
+     id text PRIMARY KEY,
+     position integer NOT NULL,
+     label text NOT NULL,
+     title text NOT NULL,
+     blurb text NOT NULL,
+     map_id text NOT NULL,
+     gold integer NOT NULL,
+     enemies jsonb NOT NULL,
+     goal jsonb NOT NULL,
+     required jsonb NOT NULL,
+     unlock jsonb,
+     crt boolean NOT NULL DEFAULT false,
+     before jsonb NOT NULL,
+     after jsonb NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   ALTER TABLE battles ADD COLUMN goal jsonb, ADD COLUMN protect jsonb;`,
+  // the chapters that shipped in code, with their maps, keeping their ids so campaign_wins stays valid
+  async db => {
+    for (const [i, ch] of CAMPAIGN_SEED.entries()) {
+      await db.query('INSERT INTO maps (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [ch.mapId, JSON.stringify(ch.map)]);
+      await db.query(
+        `INSERT INTO chapters (id, position, label, title, blurb, map_id, gold, enemies, goal, required, unlock, crt, before, after)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [ch.id, i, ch.label, ch.title, ch.blurb, ch.mapId, ch.gold, JSON.stringify(ch.enemies), JSON.stringify(ch.goal), JSON.stringify(ch.required),
+          ch.unlock ? JSON.stringify(ch.unlock) : null, !!ch.crt, JSON.stringify(ch.before), JSON.stringify(ch.after)]);
+    }
+  },
 ];
 
 /**
@@ -180,7 +211,8 @@ export const migrate = (pool: pg.Pool) => tx(pool, async db => {
   await db.query('CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY)');
   const { rows } = await db.query('SELECT coalesce(max(version), 0) AS v FROM schema_migrations');
   for (let v = rows[0].v; v < MIGRATIONS.length; v++) {
-    await db.query(MIGRATIONS[v]);
+    const m = MIGRATIONS[v];
+    await (typeof m === 'string' ? db.query(m) : m(db));
     await db.query('INSERT INTO schema_migrations VALUES ($1)', [v + 1]);
     console.log(`migration ${v + 1} applied`);
   }

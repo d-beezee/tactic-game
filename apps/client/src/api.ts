@@ -1,4 +1,4 @@
-import type { BattleAction, MapData, MissionEnemy, Player, Pos, Recruit, Unit, UnitChange, XpReport } from '@tactics/core';
+import type { BattleAction, Chapter, ChapterInput, MapData, MissionEnemy, Player, Pos, Recruit, Unit, UnitChange, XpReport } from '@tactics/core';
 
 export interface Account extends Player {
   email: string;
@@ -76,8 +76,12 @@ export const api = {
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
     call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean; unlocked?: string | null }>('POST', `/battles/${id}/finish`, { actions }),
-  /** ids of the campaign chapters this player has won */
-  campaign: () => call<{ cleared: string[] }>('GET', '/campaign'),
+  /** the chapters in play order, and the ids of those this player has won */
+  campaign: () => call<{ chapters: Chapter[]; cleared: string[] }>('GET', '/campaign'),
+  createChapter: (c: ChapterInput & { mapId: string }) => call<Chapter[]>('POST', '/admin/chapters', c),
+  updateChapter: (id: string, c: ChapterInput & { mapId: string }) => call<Chapter[]>('PUT', `/admin/chapters/${encodeURIComponent(id)}`, c),
+  moveChapter: (id: string, dir: -1 | 1) => call<Chapter[]>('POST', `/admin/chapters/${encodeURIComponent(id)}/move`, { dir }),
+  deleteChapter: (id: string) => call<Chapter[]>('DELETE', `/admin/chapters/${encodeURIComponent(id)}`),
   pvpQueue: () => call<{ id: string }>('POST', '/pvp/queue'),
   pvpRoom: () => call<{ id: string }>('POST', '/pvp/rooms'),
   pvpJoin: (code: string) => call<{ id: string }>('POST', '/pvp/join', { code }),

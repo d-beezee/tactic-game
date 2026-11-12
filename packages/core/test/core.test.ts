@@ -300,7 +300,7 @@ describe('test battle on the server', () => {
   });
 });
 
-import { CAMPAIGN, chapterOpen, chapterUnits } from '../src';
+import { CAMPAIGN_SEED as CAMPAIGN, campaignErrors, chapterOpen, chapterUnits, parseChapter } from '../src';
 describe('battle goals', () => {
   const at = (id: string, team: 'A' | 'B', classId: string, x: number, hp?: number) => {
     const u = createUnit(id, id, team, classId, { x, y: 0 }, 'E');
@@ -363,9 +363,39 @@ describe('campaign', () => {
   it('required units must be deployed, chapters open in order', () => {
     const ch = CAMPAIGN[1];
     expect(() => chapterUnits(roster, ch, [{ id: 'r1', pos: ch.map.spawns.A[0] }])).toThrow(PlayerError);
-    expect(chapterOpen([], CAMPAIGN[0].id)).toBe(true);
-    expect(chapterOpen([], ch.id)).toBe(false);
-    expect(chapterOpen([CAMPAIGN[0].id], ch.id)).toBe(true);
-    expect(chapterOpen([CAMPAIGN[0].id], 'nope')).toBe(false);
+    const order = CAMPAIGN.map(c => c.id);
+    expect(chapterOpen(order, [], CAMPAIGN[0].id)).toBe(true);
+    expect(chapterOpen(order, [], ch.id)).toBe(false);
+    expect(chapterOpen(order, [CAMPAIGN[0].id], ch.id)).toBe(true);
+    expect(chapterOpen(order, [CAMPAIGN[0].id], 'nope')).toBe(false);
+    expect(chapterOpen([ch.id, CAMPAIGN[0].id], [], ch.id)).toBe(true);
+  });
+
+  it('the shipped order holds together; a required unit unlocked later does not', () => {
+    expect(campaignErrors(CAMPAIGN)).toEqual([]);
+    const [prologue, crows, bridge, tower] = CAMPAIGN;
+    expect(campaignErrors([prologue, bridge, crows, tower])).toEqual([]); // teo comes from the prologue
+    expect(campaignErrors([crows, prologue, bridge, tower])[0]).toContain('Teo');
+    expect(campaignErrors([prologue, prologue])[0]).toContain('già presente');
+  });
+
+  it('parseChapter keeps a valid chapter and rejects broken ones', () => {
+    const ch = CAMPAIGN[3]; // boss goal, named enemy, two-class unlock
+    const { id: _, ...unlock } = ch.unlock!;
+    const input = { ...ch, unlock };
+    const out = parseChapter(ch.map, input);
+    expect(out.goal).toEqual(ch.goal);
+    expect(out.enemies[0].name).toBe('Il Guardiano');
+    expect(out.unlock?.xp).toEqual(ch.unlock!.xp);
+    expect(out.before).toEqual(ch.before);
+    const bad = (change: object) => expect(() => parseChapter(ch.map, { ...input, ...change })).toThrow(PlayerError);
+    bad({ goal: { type: 'boss', unitId: `enemy${ch.enemies.length}` } });
+    bad({ goal: { type: 'reach', cells: [ch.map.spawns.A[0]] } });
+    bad({ goal: { type: 'survive', rounds: 0 } });
+    bad({ before: [{ scene: 'kitchen', text: 'x' }] });
+    bad({ after: [{ scene: 'map', text: '  ' }] });
+    bad({ unlock: { ...unlock, xp: {} } }); // a sage needs cleric and archer XP
+    bad({ gold: -1 });
+    bad({ title: '' });
   });
 });
