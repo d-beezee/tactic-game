@@ -4,7 +4,7 @@ import { createApp } from './app';
 import { migrate } from './db';
 
 async function main() {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL ?? "postgres://tactics:tactics@localhost:5433/tactics";
   if (!url) throw new Error('DATABASE_URL is not set');
   const pool = new pg.Pool({ connectionString: url });
   await migrate(pool);
