@@ -68,6 +68,7 @@ export const api = {
   deleteMap: (id: string) => call<MapData[]>('DELETE', `/admin/maps/${encodeURIComponent(id)}`),
   logout: () => call<unknown>('POST', '/auth/logout'),
   updateUnit: (id: string, change: UnitChange) => call<Player>('PATCH', `/units/${encodeURIComponent(id)}`, change),
+  kickUnit: (id: string) => call<Player>('POST', `/units/kick/${encodeURIComponent(id)}`),
   buy: (itemId: string) => call<Player>('POST', '/shop/buy', { itemId }),
   /** The server picks the seed and builds the starting units from its own copy of the roster. */
   /** A test battle names its map, a mission or a campaign chapter its id. */

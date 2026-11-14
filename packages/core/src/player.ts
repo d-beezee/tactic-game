@@ -62,3 +62,10 @@ export function updateUnit(p: Player, unitId: string, change: UnitChange): Playe
   }
   return { ...p, roster: p.roster.map(u => (u === unit ? next : u)) };
 }
+
+
+export function kickUnit(p: Player, unitId: string): Player {
+  const unitIdx = p.roster.findIndex(u => u.id === unitId);
+  if (unitIdx < 0) throw new PlayerError('Unità sconosciuta');
+  return { ...p, roster: p.roster.filter(u => u.id != unitId) };
+}

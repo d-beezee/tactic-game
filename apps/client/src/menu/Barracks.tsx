@@ -43,8 +43,9 @@ function Pedestal({ unit }: { unit: RosterUnit }) {
   return <div className="pedestal">{dir && <img alt="" src={`${dir}/${FACINGS[facing]}.png`} width={168} height={168} />}</div>;
 }
 
-export function Barracks({ player, selected, select, update, ...page }: PageProps & {
+export function Barracks({ player, selected, select, update, kick, ...page }: PageProps & {
   player: Account; selected: string; select: (unitId: string) => void; update: (unitId: string, change: UnitChange) => void;
+  kick: (unitId: string) => void;
 }) {
   const roster = player.roster;
   const unit = roster.find(u => u.id === selected)!;
@@ -69,6 +70,9 @@ export function Barracks({ player, selected, select, update, ...page }: PageProp
         <div className="hero-unit">
           <Pedestal unit={unit} />
           <div>
+            <button className="btn" onClick={() => {kick(unit.id); select(roster[0].id)}}
+              style={{backgroundColor: "none", color: "black", float: "right"}}
+            >Lascia Caserma</button>
             <h3>{unit.name}</h3>
             <p className="sub">{raceName(unit.raceId)} · {CLASSES[unit.classId].name} Lv {eff.level}</p>
             <p className="hint">{RACES[race].trait.name}: {RACES[race].trait.description}</p>

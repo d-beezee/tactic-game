@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { activeUnit, addRecruit, apply, buyItem, campaignErrors, chapterOpen, chapterUnits, MAX_MISSION_GOLD, parseChapter, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, parseRecruit, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type Chapter, type MapData, type Player } from '@tactics/core';
+import { activeUnit, addRecruit, apply, buyItem, campaignErrors, chapterOpen, chapterUnits, MAX_MISSION_GOLD, parseChapter, createBattle, deployTeam, deployTestBattle, PVP_LEVEL, missionUnits, parseMissionEnemies, parseRecruit, payBattle, replayTestBattle, newPlayer, parseMap, parseRoster, PlayerError, updateUnit, type BattleAction, type Chapter, type MapData, type Player, kickUnit } from '@tactics/core';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -160,6 +160,10 @@ export function createApp(pool: pg.Pool, staticDir: string) {
   app.patch('/api/units/:id', async c => {
     const change = await body(c);
     return c.json((await mutate(c.get('userId'), p => ({ player: updateUnit(p, c.req.param('id'), change) }))).player);
+  });
+  
+  app.post('/api/units/kick/:id', async c => {
+    return c.json((await mutate(c.get('userId'), p => ({ player: kickUnit(p, c.req.param('id')) }))).player);
   });
 
   app.post('/api/shop/buy', async c => {
