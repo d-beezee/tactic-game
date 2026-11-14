@@ -81,8 +81,9 @@ apps/server/        server Node (Hono) + Postgres
   src/main.ts         avvio: migrazioni, poi server HTTP
   src/app.ts          API: account, sessioni, caserma, negozio, battaglie
   src/db.ts           migrazioni e transazioni
-apps/client/        client Vite + Phaser 3
-  src/menu.ts         accesso, menu iniziale, caserma e negozio
+apps/client/        client Vite + Phaser 3, menu in React
+  src/menu/           accesso, menu iniziale, caserma e negozio: una schermata per file
+  src/workshop/       Officina (admin): campagna, missioni, musiche, utenti
   src/api.ts          chiamate al server
   src/battle.ts       avvio della battaglia di prova
   src/deploy.ts       schieramento con drag and drop
