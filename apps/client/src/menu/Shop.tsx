@@ -1,4 +1,4 @@
-import { ITEMS, SLOT_LABELS, itemBonus, unitFromRoster, type ItemDef, type RosterUnit, type Stats } from '@tactics/core';
+import { RACES, CLASSES, ITEMS, SLOT_LABELS, itemBonus, unitFromRoster, type ItemDef, type RosterUnit, type Stats, Unit } from '@tactics/core';
 import { Fragment, useState } from 'react';
 import type { Account } from '../api';
 import { Page, type PageProps } from './Page';
@@ -17,9 +17,12 @@ export function Shop({ player, selected, buy, ...page }: PageProps & {
   const [notice, setNotice] = useState('');
   const unit = player.roster.find(u => u.id === selected) ?? player.roster[0];
 
+  const unitsSold = pickRandomUnits()
+
   return (
     <Page title={`Negozio · ${player.gold} oro`} {...page}>
       <p className="notice" role="status" hidden={!notice}>{notice}</p>
+      <p>Items</p>
       <div className="class-grid shop">
         {Object.values(ITEMS).map(i => {
           const missing = i.price - player.gold;
@@ -42,6 +45,30 @@ export function Shop({ player, selected, buy, ...page }: PageProps & {
           );
         })}
       </div>
+
+      <p>Units</p>
+      <div className="class-grid shop">
+        {Object.values(unitsSold).map(i => {
+          const price = 300
+          const missing = price - player.gold;
+          const confirm = pending === i.id && missing <= 0;
+           // two taps: the first asks, the second buys (a purchase cannot be undone)
+           const onClick = () => {
+             setNotice('');
+             if (!confirm) return setPending(i.id);
+             setPending('');
+             void buy(i.id).then(ok => setNotice(ok ? `Comprato: ${i.name}. Si è unito alla tua caserma.` : ''));
+          };
+
+          return (
+            <button key={i.name} className={`class-card${confirm ? ' confirm' : ''}`} disabled={missing > 0} onClick={onClick}>
+              <span className="cn">{i.name}</span>
+              <span className="cl">{RACES[i.raceId || "human"]["name"]}, {CLASSES[i.classId]["name"]}</span>
+              <span className="price">{missing > 0 ? `${price} oro · mancano ${missing}` : confirm ? `Tocca di nuovo per comprare · ${price} oro` : `Compra · ${price} oro`}</span>
+            </button>
+          );
+        })}
+      </div>
     </Page>
   );
 }
@@ -59,4 +86,18 @@ function Compare({ item, unit }: { item: ItemDef; unit: RosterUnit }) {
       ))}
     </span>
   );
+}
+
+function pickRandomUnits(): RosterUnit[] {
+  var units: RosterUnit[] = []
+  var max_units: integer = 4
+  for (let x = 0; x < max_units; x++) {
+    var classesKeys = Object.keys(CLASSES)
+    var unitClass = classesKeys[Math.floor(Math.random() * classesKeys.length)];
+    var racesKeys = Object.keys(RACES)
+    var unitRace = racesKeys[Math.floor(Math.random() * racesKeys.length)];
+    var unit: RosterUnit = { id: 's' + x.toString(), name: String(x), raceId: RACES[unitRace]["id"], classId: CLASSES[unitClass]["id"], xp: {}, passive: null };
+    units[x] = unit
+  }
+  return units
 }
