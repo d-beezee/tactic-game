@@ -75,7 +75,7 @@ export const api = {
   pvpQueue: () => call<{ id: string }>('POST', '/pvp/queue'),
   pvpRoom: () => call<{ id: string }>('POST', '/pvp/rooms'),
   pvpJoin: (code: string) => call<{ id: string }>('POST', '/pvp/join', { code }),
-  pvpState: (id: string, from = 0) => call<PvpState>('GET', `/pvp/${id}?from=${from}`),
+  pvpState: (id: string, from = 0) => call<PvpState>('POST', `/pvp/${id}/poll?from=${from}`),
   pvpDeploy: (id: string, deploy: { id: string; pos: Pos }[]) => call<unknown>('POST', `/pvp/${id}/deploy`, { deploy }),
   /** index = the action's place in the whole battle, so a retry is not applied twice */
   pvpAction: (id: string, index: number, action: BattleAction) => call<unknown>('POST', `/pvp/${id}/actions`, { index, action }),

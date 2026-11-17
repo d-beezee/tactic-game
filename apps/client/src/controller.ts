@@ -1,6 +1,6 @@
 import {
   STATUSES, actionTargets, activeUnit, affectedBy, apply, areaCells, areaRadius, rangeBonus, rangeCells, destinations, expectedAmount, facingToward, heightAt, key, pathTo,
-  planTurn, reachable, samePos, sideOf, unitActions, unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
+  planTurn, pushCells, reachable, samePos, sideOf, statusChance, unitActions, unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
 import { hud, type Forecast, type ResultLine } from './hud';
@@ -13,13 +13,20 @@ const actionIcon = (a: ActionDef) => (a.effect === 'teleport' || a.effect === 's
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+function goalSentence(s: BattleState): string {
+  const g = s.goal;
+  switch (g.type) {
+    case 'rout': return 'Sconfiggi tutti i nemici';
+    case 'survive': return `Resisti fino alla fine del round ${g.rounds} (ora ${Math.min(s.round, g.rounds)}/${g.rounds})`;
+    case 'reach': return 'Porta un\'unità sulle caselle d\'oro';
+    case 'boss': return `Sconfiggi ${unitById(s, g.unitId).name}`;
+    default: return g satisfies never;
+  }
+}
+
 /** The goal of team A, in words, with the units that must not fall. */
 export function goalText(s: BattleState): string {
-  const g = s.goal;
-  const text = g.type === 'survive' ? `Resisti fino alla fine del round ${g.rounds} (ora ${Math.min(s.round, g.rounds)}/${g.rounds})`
-    : g.type === 'reach' ? 'Porta un\'unità sulle caselle d\'oro'
-    : g.type === 'boss' ? `Sconfiggi ${unitById(s, g.unitId).name}`
-    : 'Sconfiggi tutti i nemici';
+  const text = goalSentence(s);
   const keep = s.protect.map(id => unitById(s, id).name);
   return keep.length ? `${text}. ${keep.join(' e ')} non deve cadere` : text;
 }
@@ -83,8 +90,8 @@ export class Controller {
     const rows: [string, string][] = [];
     if (areaRadius(u, action) >= 0) rows.push(['Area', plural(hit.length, 'bersaglio', 'bersagli')]);
     const st = action.status;
-    if (st) rows.push(['Stato', `${STATUSES[st.id].name}, ${plural(st.turns, 'turno', 'turni')}${st.chance !== undefined ? ` (${Math.min(100, st.chance + u.mods.chanceBonus)}%)` : ''}`]);
-    if (action.push) rows.push(['Spinta', plural(action.push + u.mods.pushBonus, 'casella', 'caselle')]);
+    if (st) rows.push(['Stato', `${STATUSES[st.id].name}, ${plural(st.turns, 'turno', 'turni')}${st.chance !== undefined ? ` (${Math.min(100, statusChance(u, st))}%)` : ''}`]);
+    if (action.push) rows.push(['Spinta', plural(pushCells(u, action), 'casella', 'caselle')]);
     const t = hit.find(x => samePos(x.pos, p)) ?? hit[0];
     if (action.effect === 'none') return { title: `${action.name}: ${u.name} su ${t.name}${hit.length > 1 ? ' e altri' : ''}`, heal, rows };
     return {

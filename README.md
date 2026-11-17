@@ -162,7 +162,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/miss
 ## Campagna
 
 - **Storia:** "Cronache di Valdombra". Due fratelli, Teo e Nico, giocano a turno a un gioco per un solo giocatore in una cameretta del 1996, e vengono risucchiati dentro. Teo combatte con il roster; Nico diventa il boss finale.
-- **Capitoli:** dati, mappe, nemici, obiettivi e dialoghi stanno in `packages/core/src/campaign.ts`, le mappe in `packages/core/src/campaign/*.json`. Client e server leggono gli stessi file. Un capitolo si apre quando il precedente è vinto.
+- **Capitoli:** dati, mappe, nemici, obiettivi e dialoghi stanno nella tabella `chapters` e si modificano dall'Officina. Un database nuovo parte dai capitoli in `apps/server/src/migrations/011-chapters.json`, una copia fissa da non modificare. Le regole (validazione, apertura, unità richieste) stanno in `packages/core/src/campaign.ts`. Un capitolo si apre quando il precedente è vinto.
 - **Obiettivi** (`Goal` in `battle.ts`):
   - `rout`: sconfiggi tutti;
   - `survive`: resisti fino alla fine di un round;
@@ -180,7 +180,7 @@ Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/miss
 - **Partita:** mappa di base. Chi crea la stanza, o aspettava in coda, è la squadra blu (A); l'altro la rossa (B), sulle partenze nemiche. Ognuno schiera fino a `maxDeploy` unità; la battaglia parte quando hanno schierato entrambi.
 - **Livelli:** tutte le unità combattono al livello 5 (`PVP_LEVEL`), con passiva ed equipaggiamento. Il PvP non dà XP né oro.
 - **Server autoritativo:** il server conserva le azioni della partita. A ogni mossa rigioca la battaglia, controlla che tocchi alla squadra di chi la manda e la applica con `apply`. Ogni azione porta il suo indice, così un invio ripetuto non viene applicato due volte.
-- **Comunicazione:** ogni client interroga il server una volta al secondo (`GET /api/pvp/:id?from=n`) e riceve le azioni nuove. Niente WebSocket.
+- **Comunicazione:** ogni client interroga il server una volta al secondo (`POST /api/pvp/:id/poll?from=n`: scrive, segna il giocatore come presente) e riceve le azioni nuove. Niente WebSocket.
 - **Fine:** vince chi elimina le unità avversarie. "Arrenditi" dà la vittoria all'altro. Chi non si fa sentire per 45 secondi (pagina chiusa, rete persa) perde. Entrare di nuovo in coda o in una stanza chiude la partita precedente con una resa.
 - **Dati:** tabella `pvp_matches`, una riga per partita, con stato (`waiting`, `deploy`, `battle`, `done`), schieramenti, unità, seme e azioni.
 

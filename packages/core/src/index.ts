@@ -13,6 +13,7 @@ export * from './roster';
 export * from './items';
 export * from './player';
 export * from './missions';
+export * from './match';
 export * from './campaign';
 export * from './demoMap';
 export * from './api';

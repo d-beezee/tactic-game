@@ -222,12 +222,17 @@ function Menu({ go, after }: { go: Go; after?: After }) {
     case 'maps': return <Maps {...page} fight={fight} />;
     case 'shop': return <Shop {...page} player={player} selected={selected} buy={id => run(api.buy(id))} />;
     case 'barracks': return (
-      <Barracks {...page} 
-        player={player} 
-        selected={selected} 
-        select={setSelected} 
-        update={(id, change) => void run(api.updateUnit(id, change))} 
-        kick={(id) => void run(api.kickUnit(id))}
+      <Barracks {...page}
+        player={player}
+        selected={selected}
+        select={setSelected}
+        update={(id, change) => void run(api.updateUnit(id, change))}
+        kick={async id => {
+          const next = await load(api.kickUnit(id));
+          if (!next) return;
+          setPlayer(p => ({ ...p!, ...next }));
+          setSelected(next.roster[0].id);
+        }}
       />
     );
     case 'workshop': return (

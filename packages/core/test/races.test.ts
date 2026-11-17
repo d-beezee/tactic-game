@@ -15,8 +15,19 @@ const flat = (w: number, h: number, heights?: number[][]): MapData => ({
 /** A battle where units play in the given order, first one active. */
 const battle = (map: MapData, units: Unit[], seed = 1): BattleState => ({ ...createBattle(map, units, seed), order: units.map(u => u.id), turn: 0 });
 const mk = (id: string, team: 'A' | 'B', classId: string, x: number, y: number, raceId?: string, passive: string | null = null) =>
-  createUnit(id, id, team, classId, { x, y }, team === 'A' ? 'E' : 'W', 1, passive, {}, raceId);
+  createUnit(id, id, team, classId, { x, y }, team === 'A' ? 'E' : 'W', { passive, raceId });
 const get = (s: BattleState, id: string) => s.units.find(u => u.id === id)!;
+
+describe('game data', () => {
+  it('every class and race id it refers to exists', () => {
+    for (const [id, c] of Object.entries(CLASSES)) {
+      expect(c.id).toBe(id);
+      for (const req of Object.keys(c.requires ?? {})) expect(CLASSES, `${id} requires ${req}`).toHaveProperty(req);
+      for (const r of c.races ?? []) expect(RACES, `${id} race ${r}`).toHaveProperty(r);
+    }
+    for (const [id, r] of Object.entries(RACES)) expect(r.id).toBe(id);
+  });
+});
 
 describe('races', () => {
   it('race-locked classes, and hybrids inherit the lock', () => {
@@ -28,12 +39,12 @@ describe('races', () => {
   });
 
   it('race bonuses are flat, after level growth', () => {
-    const h = createUnit('h', 'h', 'A', 'warrior', { x: 0, y: 0 }, 'S', 3);
-    const p = createUnit('p', 'p', 'A', 'warrior', { x: 0, y: 0 }, 'S', 3, null, {}, 'peatfolk');
+    const h = createUnit('h', 'h', 'A', 'warrior', { x: 0, y: 0 }, 'S', { level: 3 });
+    const p = createUnit('p', 'p', 'A', 'warrior', { x: 0, y: 0 }, 'S', { level: 3, raceId: 'peatfolk' });
     expect(p.stats.maxHp).toBe(h.stats.maxHp + 8);
     expect(p.stats.speed).toBe(h.stats.speed - 1);
     expect(p.mods.regenPct).toBe(5);
-    expect(() => createUnit('x', 'x', 'A', 'warrior', { x: 0, y: 0 }, 'S', 1, null, {}, 'elf')).toThrow();
+    expect(() => createUnit('x', 'x', 'A', 'warrior', { x: 0, y: 0 }, 'S', { raceId: 'elf' })).toThrow();
   });
 
   it('a unit can only take classes of its race', () => {
@@ -166,7 +177,7 @@ describe('determinism with new classes', () => {
     const units = ids.slice(0, 16).map((c, i) => {
       const team = i % 2 ? 'B' : 'A';
       const race = races(c)[i % races(c).length];
-      return createUnit(`u${i}`, `u${i}`, team, c, { x: Math.floor(i / 2) + 1, y: team === 'A' ? 1 : 8 }, team === 'A' ? 'S' : 'N', 4, null, {}, race);
+      return createUnit(`u${i}`, `u${i}`, team, c, { x: Math.floor(i / 2) + 1, y: team === 'A' ? 1 : 8 }, team === 'A' ? 'S' : 'N', { level: 4, raceId: race });
     });
     const run = () => {
       const spawns = (y: number) => Array.from({ length: 8 }, (_, x) => ({ x, y }));

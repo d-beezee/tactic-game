@@ -50,7 +50,7 @@ export const isUnlocked = (r: RosterUnit, classId: string) =>
 export const unlockedPassives = (r: RosterUnit) => Object.keys(CLASSES).filter(c => classLevel(r, c) >= PASSIVE_LEVEL);
 
 export function unitFromRoster(r: RosterUnit, team: Team, pos: Pos, facing: Dir): Unit {
-  return createUnit(r.id, r.name, team, r.classId, pos, facing, classLevel(r, r.classId), r.passive, r.equip, raceOf(r));
+  return createUnit(r.id, r.name, team, r.classId, pos, facing, { level: classLevel(r, r.classId), passive: r.passive, equip: r.equip, raceId: raceOf(r) });
 }
 
 export interface XpReport { id: string; name: string; classId: string; gained: number; from: number; to: number }

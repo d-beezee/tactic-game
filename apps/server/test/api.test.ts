@@ -1,5 +1,5 @@
 // Integration tests against the docker-compose Postgres: each run starts from an empty tactics_test database.
-import { activeUnit, apply, createBattle, DEMO_MAP, planTurn, type Account, type BattleAction, type BattleResult, type BattleStart, type Mission, type PvpState, type Unit } from '@tactics/core';
+import { activeUnit, apply, createBattle, DEMO_MAP, planTurn, type Account, type BattleAction, type BattleResult, type BattleStart, type Chapter, type Mission, type PvpState, type Unit } from '@tactics/core';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
@@ -125,12 +125,12 @@ describe('PvP', () => {
   async function match() {
     const a = await signUp(`a${Math.random()}@test.it`), b = await signUp(`b${Math.random()}@test.it`);
     const [, { id }] = await a.call<{ id: string }>('POST', '/pvp/rooms');
-    const [, room] = await a.call<PvpState>('GET', `/pvp/${id}`);
+    const [, room] = await a.call<PvpState>('POST', `/pvp/${id}/poll`);
     expect((await b.call('POST', '/pvp/join', { code: room.code }))[0]).toBe(200);
     const two = (acc: Account, spawns: typeof map.spawns.A) => spawns.slice(0, 2).map((pos, i) => ({ id: acc.roster[i].id, pos }));
     expect((await a.call('POST', `/pvp/${id}/deploy`, { deploy: two(a.account, map.spawns.A) }))[0]).toBe(200);
     expect((await b.call('POST', `/pvp/${id}/deploy`, { deploy: two(b.account, map.spawns.B) }))[0]).toBe(200);
-    const [, state] = await a.call<PvpState>('GET', `/pvp/${id}`);
+    const [, state] = await a.call<PvpState>('POST', `/pvp/${id}/poll`);
     expect(state.status).toBe('battle');
     const s = createBattle(state.map, state.units!, state.seed!);
     const first = activeUnit(s).team;
@@ -150,13 +150,34 @@ describe('PvP', () => {
     const action = planTurn(s)[0];
     expect((await mover.call('POST', `/pvp/${id}/actions`, { index: 0, action }))[0]).toBe(200);
     expect((await mover.call('POST', `/pvp/${id}/actions`, { index: 0, action }))[0]).toBe(200);
-    const [, state] = await mover.call<PvpState>('GET', `/pvp/${id}`);
+    const [, state] = await mover.call<PvpState>('POST', `/pvp/${id}/poll`);
     expect(state.actions).toHaveLength(1);
   });
 
   it('an action that skips ahead is refused', async () => {
     const { id, s, mover } = await match();
     expect((await mover.call('POST', `/pvp/${id}/actions`, { index: 1, action: planTurn(s)[0] }))[0]).toBe(409);
+  });
+});
+
+describe('campaign and roster', () => {
+  it('an edited chapter keeps every field and its unlock id', async () => {
+    const admin = await signUp('editor@test.it');
+    await pool.query("UPDATE users SET is_admin = true WHERE email = 'editor@test.it'");
+    const [, { chapters: [ch] }] = await admin.call<{ chapters: Chapter[] }>('GET', '/campaign');
+    const { id, mapId, map: _, unlock, ...input } = ch;
+    const [status, after] = await admin.call<Chapter[]>('PUT', `/admin/chapters/${id}`, { ...input, mapId, title: 'Nuovo titolo', unlock: { ...unlock, id: undefined } });
+    expect(status).toBe(200);
+    expect(after[0]).toMatchObject({ ...input, mapId, title: 'Nuovo titolo', unlock });
+  });
+
+  it('kicking keeps the campaign units and the last unit', async () => {
+    const p = await signUp('kick@test.it');
+    const [ok, me] = await p.call<Account>('POST', `/units/kick/${p.account.roster[1].id}`);
+    expect(ok).toBe(200);
+    expect(me.roster).toHaveLength(p.account.roster.length - 1);
+    for (const u of me.roster.slice(1)) expect((await p.call('POST', `/units/kick/${u.id}`))[0]).toBe(200);
+    expect((await p.call('POST', `/units/kick/${me.roster[0].id}`))[0]).toBe(400);
   });
 });
 

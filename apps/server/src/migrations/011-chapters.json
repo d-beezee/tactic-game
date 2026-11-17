@@ -1,0 +1,1326 @@
+[
+ {
+  "id": "prologue",
+  "label": "Prologo",
+  "title": "Turno tuo, turno mio",
+  "blurb": "Novembre 1996. Due fratelli, un computer, un gioco per un giocatore solo.",
+  "mapId": "camp-prologue",
+  "map": {
+   "id": "camp-prologue",
+   "name": "Il guado",
+   "width": 8,
+   "height": 8,
+   "heights": [
+    [
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     1
+    ],
+    [
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     1,
+     2,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     1
+    ]
+   ],
+   "terrain": [
+    "gggggggg",
+    "gggdgggg",
+    "ggdddggg",
+    "gggddsss",
+    "gsgddggg",
+    "sssgddgg",
+    "gsgggddg",
+    "ggggdddd"
+   ],
+   "spawns": {
+    "A": [
+     {
+      "x": 1,
+      "y": 0
+     },
+     {
+      "x": 2,
+      "y": 0
+     },
+     {
+      "x": 3,
+      "y": 0
+     },
+     {
+      "x": 2,
+      "y": 1
+     }
+    ],
+    "B": [
+     {
+      "x": 4,
+      "y": 7
+     },
+     {
+      "x": 5,
+      "y": 7
+     },
+     {
+      "x": 6,
+      "y": 7
+     }
+    ]
+   },
+   "maxDeploy": 3
+  },
+  "enemies": [
+   {
+    "classId": "warrior",
+    "level": 1,
+    "pos": {
+     "x": 4,
+     "y": 7
+    }
+   },
+   {
+    "classId": "archer",
+    "level": 1,
+    "pos": {
+     "x": 6,
+     "y": 7
+    }
+   }
+  ],
+  "goal": {
+   "type": "rout"
+  },
+  "required": [],
+  "gold": 100,
+  "crt": true,
+  "unlock": {
+   "id": "teo",
+   "name": "Teo",
+   "classId": "warrior",
+   "xp": {
+    "warrior": 250
+   },
+   "passive": null
+  },
+  "before": [
+   {
+    "scene": "bedroom",
+    "text": "Novembre 1996. Mezzanotte meno tredici. Fuori piove da tre giorni."
+   },
+   {
+    "scene": "bedroom",
+    "who": "Nico",
+    "text": "Ancora un tiro, Teo. Uno solo. Il Re Senzavolto è a due caselle."
+   },
+   {
+    "scene": "bedroom",
+    "who": "Teo",
+    "text": "Hai detto \"uno solo\" quaranta minuti fa. Adesso tocca a me."
+   },
+   {
+    "scene": "bedroom",
+    "who": "Nico",
+    "text": "È un gioco per UN giocatore. C'è scritto sulla scatola."
+   },
+   {
+    "scene": "bedroom",
+    "who": "Teo",
+    "text": "E la mamma ha detto che il computer è di tutti e due. Un'unità a testa, come sempre."
+   },
+   {
+    "scene": "bedroom",
+    "who": "Nico",
+    "text": "Va bene. Ma se perdi, il salvataggio lo tengo io."
+   },
+   {
+    "scene": "crt",
+    "text": "CRONACHE DI VALDOMBRA. Livello 1: il guado."
+   },
+   {
+    "scene": "crt",
+    "who": "Teo",
+    "text": "Brando davanti, Lia dietro. Oris cura chi resta indietro."
+   },
+   {
+    "scene": "crt",
+    "who": "Nico",
+    "text": "Lo so come si gioca. Muoviti."
+   }
+  ],
+  "after": [
+   {
+    "scene": "crt",
+    "text": "VITTORIA."
+   },
+   {
+    "scene": "crt",
+    "who": "Teo",
+    "text": "Visto? Neanche un'unità persa."
+   },
+   {
+    "scene": "crt",
+    "who": "Nico",
+    "text": "Fortuna. Dammi il mouse. Il Re lo batto io. Da solo, tutti i turni miei."
+   },
+   {
+    "scene": "bedroom",
+    "fx": "shake",
+    "text": "Un tuono. La lampada sfarfalla. Il modem, spento, comincia a fischiare."
+   },
+   {
+    "scene": "crt",
+    "fx": "glitch",
+    "who": "???",
+    "text": "GIOCATORE 2 RILEVATO. VUOI GIOCARE TUTTI I TURNI?"
+   },
+   {
+    "scene": "crt",
+    "who": "Nico",
+    "text": "…Sì."
+   },
+   {
+    "scene": "crt",
+    "who": "Teo",
+    "text": "Nico, non toccare niente! Lo schermo… si sta piegando."
+   },
+   {
+    "scene": "crt",
+    "fx": "suck",
+    "text": "Lo schermo si apre come una bocca. Il pavimento diventa luce."
+   },
+   {
+    "scene": "black",
+    "fx": "flash",
+    "who": "Teo",
+    "text": "NICO!"
+   }
+  ]
+ },
+ {
+  "id": "crows",
+  "label": "Capitolo 1",
+  "title": "Il campo dei corvi",
+  "blurb": "Teo si sveglia dentro il gioco. E il gioco è vero.",
+  "mapId": "camp-crows",
+  "map": {
+   "id": "camp-crows",
+   "name": "Il campo dei corvi",
+   "width": 12,
+   "height": 12,
+   "heights": [
+    [
+     0,
+     0,
+     1,
+     1,
+     2,
+     2,
+     2,
+     2,
+     1,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     2,
+     3,
+     3,
+     3,
+     3,
+     2,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     2,
+     3,
+     3,
+     3,
+     3,
+     2,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     2,
+     3,
+     3,
+     3,
+     3,
+     2,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     1,
+     2,
+     2,
+     2,
+     2,
+     1,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "terrain": [
+    "ggggssssgggg",
+    "gggssssssggg",
+    "gggssssssggg",
+    "gggssssssggg",
+    "ggggggggggxg",
+    "wwgggdddgggg",
+    "wwddddddddgg",
+    "gddddddddgxg",
+    "gdddxdddddgg",
+    "gddddddddggg",
+    "ggddddddddgg",
+    "gggggggggggg"
+   ],
+   "spawns": {
+    "A": [
+     {
+      "x": 4,
+      "y": 1
+     },
+     {
+      "x": 5,
+      "y": 1
+     },
+     {
+      "x": 6,
+      "y": 1
+     },
+     {
+      "x": 7,
+      "y": 1
+     },
+     {
+      "x": 5,
+      "y": 2
+     },
+     {
+      "x": 6,
+      "y": 2
+     }
+    ],
+    "B": [
+     {
+      "x": 2,
+      "y": 11
+     },
+     {
+      "x": 5,
+      "y": 11
+     },
+     {
+      "x": 8,
+      "y": 11
+     },
+     {
+      "x": 11,
+      "y": 11
+     }
+    ]
+   },
+   "maxDeploy": 4
+  },
+  "enemies": [
+   {
+    "classId": "warrior",
+    "level": 2,
+    "pos": {
+     "x": 2,
+     "y": 11
+    }
+   },
+   {
+    "classId": "warrior",
+    "level": 2,
+    "pos": {
+     "x": 5,
+     "y": 11
+    }
+   },
+   {
+    "classId": "archer",
+    "level": 2,
+    "pos": {
+     "x": 8,
+     "y": 11
+    }
+   },
+   {
+    "classId": "cleric",
+    "level": 2,
+    "pos": {
+     "x": 11,
+     "y": 11
+    }
+   },
+   {
+    "classId": "warrior",
+    "level": 1,
+    "pos": {
+     "x": 0,
+     "y": 3
+    }
+   },
+   {
+    "classId": "archer",
+    "level": 1,
+    "pos": {
+     "x": 11,
+     "y": 0
+    }
+   }
+  ],
+  "goal": {
+   "type": "survive",
+   "rounds": 5
+  },
+  "required": [
+   "teo"
+  ],
+  "gold": 150,
+  "unlock": {
+   "id": "fiora",
+   "name": "Fiora",
+   "classId": "cleric",
+   "xp": {
+    "cleric": 250
+   },
+   "passive": null
+  },
+  "before": [
+   {
+    "scene": "black",
+    "text": "Odore d'erba bagnata. Niente moquette. Niente computer."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Questo è il campo del primo livello. Ma è vero. Ed è enorme."
+   },
+   {
+    "scene": "map",
+    "who": "Lia",
+    "text": "Brando, guarda. Uno sconosciuto che tiene la spada al contrario."
+   },
+   {
+    "scene": "map",
+    "who": "Brando",
+    "text": "Vestiti strani, faccia da nuovo arrivato. Sai combattere, ragazzo?"
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Io vi conosco! Brando sta sempre in prima fila. Lia non sbaglia mai un tiro."
+   },
+   {
+    "scene": "map",
+    "who": "Lia",
+    "text": "Ci conosce. Questo non mi piace per niente."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Avete visto mio fratello? Quattordici anni, più alto di me, sempre arrabbiato."
+   },
+   {
+    "scene": "map",
+    "fx": "shake",
+    "who": "Brando",
+    "text": "Abbiamo visto solo i corvi del Re. E stanno arrivando."
+   },
+   {
+    "scene": "map",
+    "who": "Lia",
+    "text": "Sono troppi. Teniamo la collina per cinque round, poi arrivano quelli del villaggio. E il ragazzo non deve cadere."
+   }
+  ],
+  "after": [
+   {
+    "scene": "map",
+    "who": "Brando",
+    "text": "Le gambe reggono, ragazzo? Per uno nuovo, niente male."
+   },
+   {
+    "scene": "map",
+    "who": "Fiora",
+    "text": "Ho visto tutto dal mulino. Sono Fiora: curo le ferite e faccio domande. Tu da dove vieni?"
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Da una cameretta. Con un computer. È difficile da spiegare."
+   },
+   {
+    "scene": "map",
+    "who": "Fiora",
+    "text": "Spiegamelo camminando. In paese dicono che il Re Senzavolto ha un nuovo campione. Un ragazzo che non aspetta mai il suo turno."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "…Nico."
+   }
+  ]
+ },
+ {
+  "id": "bridge",
+  "label": "Capitolo 2",
+  "title": "Il ponte",
+  "blurb": "Una sola strada per la torre. Non serve vincere: serve passare.",
+  "mapId": "camp-bridge",
+  "map": {
+   "id": "camp-bridge",
+   "name": "Il ponte di Valdombra",
+   "width": 10,
+   "height": 12,
+   "heights": [
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     5,
+     5,
+     5
+    ],
+    [
+     5,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     5,
+     6,
+     6
+    ],
+    [
+     5,
+     5,
+     4,
+     4,
+     4,
+     4,
+     4,
+     5,
+     6,
+     6
+    ]
+   ],
+   "terrain": [
+    "gggggggggg",
+    "ggggddgggg",
+    "ggggddgggg",
+    "ddddssdddd",
+    "wwwwsswwww",
+    "wwwwsswwww",
+    "wwwwsswwww",
+    "wwwwsswwww",
+    "ddddssdddd",
+    "gggdddgggg",
+    "gxggddggsg",
+    "ggggddggss"
+   ],
+   "spawns": {
+    "A": [
+     {
+      "x": 3,
+      "y": 1
+     },
+     {
+      "x": 4,
+      "y": 1
+     },
+     {
+      "x": 5,
+      "y": 1
+     },
+     {
+      "x": 6,
+      "y": 1
+     },
+     {
+      "x": 4,
+      "y": 0
+     },
+     {
+      "x": 5,
+      "y": 0
+     }
+    ],
+    "B": [
+     {
+      "x": 2,
+      "y": 9
+     },
+     {
+      "x": 7,
+      "y": 9
+     },
+     {
+      "x": 3,
+      "y": 10
+     },
+     {
+      "x": 6,
+      "y": 10
+     }
+    ]
+   },
+   "maxDeploy": 4
+  },
+  "enemies": [
+   {
+    "classId": "warrior",
+    "level": 2,
+    "pos": {
+     "x": 4,
+     "y": 8
+    }
+   },
+   {
+    "classId": "warrior",
+    "level": 2,
+    "pos": {
+     "x": 5,
+     "y": 8
+    }
+   },
+   {
+    "classId": "archer",
+    "level": 2,
+    "pos": {
+     "x": 8,
+     "y": 8
+    }
+   },
+   {
+    "classId": "cleric",
+    "level": 2,
+    "pos": {
+     "x": 5,
+     "y": 10
+    }
+   }
+  ],
+  "goal": {
+   "type": "reach",
+   "cells": [
+    {
+     "x": 4,
+     "y": 11
+    },
+    {
+     "x": 5,
+     "y": 11
+    }
+   ]
+  },
+  "required": [
+   "teo"
+  ],
+  "gold": 200,
+  "unlock": {
+   "id": "bastian",
+   "name": "Bastian",
+   "classId": "ranger",
+   "xp": {
+    "archer": 450,
+    "warrior": 100
+   },
+   "passive": null
+  },
+  "before": [
+   {
+    "scene": "map",
+    "text": "Il ponte di Valdombra. L'unica strada per la torre del Re."
+   },
+   {
+    "scene": "map",
+    "who": "Lia",
+    "text": "Sull'altra sponda ci sono più arcieri che sassi."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Nel gioco questo livello lo saltavamo sempre. Nico conosceva un trucco."
+   },
+   {
+    "scene": "map",
+    "who": "Brando",
+    "text": "Qui non ci sono trucchi. Solo un ponte e gente che non vuole farci passare."
+   },
+   {
+    "scene": "map",
+    "who": "Fiora",
+    "text": "Non serve batterli tutti. Basta che uno di noi arrivi sulle pietre in fondo, e il passaggio è nostro."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Ci arriviamo. Nico, sto arrivando."
+   }
+  ],
+  "after": [
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Fermi, non tirate! Sono Bastian, il guardiano del ponte. L'ex guardiano."
+   },
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Il campione del Re è passato di qui ieri. Ha guardato i soldati muoversi uno alla volta e si è messo a ridere."
+   },
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Ha detto: \"Che spreco. Io li muovo tutti insieme.\" E loro si sono mossi. Tutti insieme."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Non si può. Nel gioco si va a turno. Sempre."
+   },
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Nel gioco, forse. Qui comanda chi ha la corona. Vengo con voi: conosco la strada per la torre."
+   }
+  ]
+ },
+ {
+  "id": "tower",
+  "label": "Capitolo 3",
+  "title": "La torre",
+  "blurb": "Il Guardiano tiene la porta. Finché sta in piedi, la torre resta chiusa.",
+  "mapId": "camp-tower",
+  "map": {
+   "id": "camp-tower",
+   "name": "La torre del Re",
+   "width": 10,
+   "height": 10,
+   "heights": [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1
+    ],
+    [
+     2,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ],
+    [
+     3,
+     3,
+     2,
+     2,
+     3,
+     3,
+     2,
+     2,
+     3,
+     3
+    ],
+    [
+     4,
+     3,
+     3,
+     3,
+     4,
+     4,
+     3,
+     3,
+     3,
+     4
+    ],
+    [
+     4,
+     4,
+     4,
+     4,
+     5,
+     5,
+     4,
+     4,
+     4,
+     4
+    ],
+    [
+     5,
+     5,
+     4,
+     5,
+     6,
+     6,
+     5,
+     4,
+     5,
+     5
+    ],
+    [
+     5,
+     5,
+     5,
+     5,
+     6,
+     6,
+     5,
+     5,
+     5,
+     5
+    ]
+   ],
+   "terrain": [
+    "gggggggggg",
+    "ggggddgggg",
+    "gggddddggg",
+    "ssssddssss",
+    "ssssssssss",
+    "sxssssssxs",
+    "ssssssssss",
+    "sxssssssxs",
+    "ssssssssss",
+    "ssssssssss"
+   ],
+   "spawns": {
+    "A": [
+     {
+      "x": 3,
+      "y": 0
+     },
+     {
+      "x": 4,
+      "y": 0
+     },
+     {
+      "x": 5,
+      "y": 0
+     },
+     {
+      "x": 6,
+      "y": 0
+     },
+     {
+      "x": 4,
+      "y": 1
+     },
+     {
+      "x": 5,
+      "y": 1
+     }
+    ],
+    "B": [
+     {
+      "x": 3,
+      "y": 9
+     },
+     {
+      "x": 4,
+      "y": 9
+     },
+     {
+      "x": 5,
+      "y": 9
+     },
+     {
+      "x": 6,
+      "y": 9
+     }
+    ]
+   },
+   "maxDeploy": 4
+  },
+  "enemies": [
+   {
+    "classId": "paladin",
+    "level": 4,
+    "pos": {
+     "x": 4,
+     "y": 8
+    },
+    "name": "Il Guardiano"
+   },
+   {
+    "classId": "archer",
+    "level": 2,
+    "pos": {
+     "x": 8,
+     "y": 6
+    }
+   },
+   {
+    "classId": "warrior",
+    "level": 2,
+    "pos": {
+     "x": 3,
+     "y": 5
+    }
+   },
+   {
+    "classId": "sage",
+    "level": 2,
+    "pos": {
+     "x": 5,
+     "y": 9
+    }
+   }
+  ],
+  "goal": {
+   "type": "boss",
+   "unitId": "enemy0"
+  },
+  "required": [
+   "teo"
+  ],
+  "gold": 300,
+  "unlock": {
+   "id": "sibilla",
+   "name": "Sibilla",
+   "classId": "sage",
+   "xp": {
+    "cleric": 450,
+    "archer": 100
+   },
+   "passive": null
+  },
+  "before": [
+   {
+    "scene": "map",
+    "text": "La torre del Re Senzavolto. Ogni gradino è più alto del precedente."
+   },
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Il Guardiano tiene la porta. Finché sta in piedi, la torre non si apre."
+   },
+   {
+    "scene": "map",
+    "who": "Lia",
+    "text": "E tutti gli altri?"
+   },
+   {
+    "scene": "map",
+    "who": "Bastian",
+    "text": "Gli altri sono un problema. Il Guardiano è IL problema."
+   },
+   {
+    "scene": "map",
+    "who": "Brando",
+    "text": "Quindi si punta al grosso, e il resto lo teniamo a bada."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "È come il livello finale. Lo conosco a memoria."
+   },
+   {
+    "scene": "map",
+    "who": "Fiora",
+    "text": "Allora, ragazzo della cameretta, dicci dove colpire."
+   }
+  ],
+  "after": [
+   {
+    "scene": "map",
+    "text": "Il Guardiano cade. Le porte si aprono con un suono che Teo conosce bene: la musichetta di fine livello."
+   },
+   {
+    "scene": "map",
+    "who": "Sibilla",
+    "text": "Finalmente. Sono Sibilla. Il Re mi teneva qui perché leggo le stelle, e le stelle dicevano: arriverà un fratello."
+   },
+   {
+    "scene": "map",
+    "fx": "flash",
+    "who": "???",
+    "text": "Un fratello. Che carino."
+   },
+   {
+    "scene": "map",
+    "text": "In cima alla scala non c'è il Re Senzavolto. C'è un ragazzo di quattordici anni, con una corona troppo grande."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Nico! Andiamo a casa. La mamma…"
+   },
+   {
+    "scene": "map",
+    "who": "Nico",
+    "text": "Casa? A casa aspettavo e basta. Il tuo turno, il mio turno, il turno per la doccia, il turno per dormire."
+   },
+   {
+    "scene": "map",
+    "who": "Nico",
+    "text": "Qui la corona dice che i turni sono miei. Tutti."
+   },
+   {
+    "scene": "map",
+    "who": "Teo",
+    "text": "Non è così che si gioca."
+   },
+   {
+    "scene": "map",
+    "fx": "glitch",
+    "who": "Nico",
+    "text": "Allora vieni a prendermi, fratellino. Ti aspetto in cima. Ma tocca a me."
+   },
+   {
+    "scene": "black",
+    "text": "Fine del capitolo 3. Continua…"
+   }
+  ]
+ }
+]

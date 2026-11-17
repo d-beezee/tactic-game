@@ -5,7 +5,8 @@ import Phaser from 'phaser';
  * One block = top diamond + one height step of side. Light comes from the top-left of the screen, so the
  * left face is lit and the right face is in shade whatever the camera rotation.
  */
-export const BLOCK = { w: 48, top: 24, side: 12, scale: 1.25 } as const;
+export { BLOCK } from './isoView';
+import { BLOCK } from './isoView';
 export const WATER_FRAMES = 3;
 
 type RGB = [number, number, number];

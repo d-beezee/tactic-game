@@ -14,9 +14,14 @@ export { note } from './hudStore';
 
 const s = hudStore.state;
 
-// mounted once, at once: the turn menu's box must exist the first time the scene asks for it
-const root = createRoot(document.getElementById('hud-root')!);
-flushSync(() => root.render(createElement(Hud)));
+/** Mounts <Hud/> into #hud-root, once and synchronously: the turn menu's box must exist the first time the scene asks for it. */
+let mounted = false;
+export function mountHud() {
+  if (mounted) return;
+  mounted = true;
+  const root = createRoot(document.getElementById('hud-root')!);
+  flushSync(() => root.render(createElement(Hud)));
+}
 
 export const hud = {
   /** Empty and hidden, as before any battle. */

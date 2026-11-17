@@ -1,5 +1,5 @@
 import {
-  CLASSES, DEFAULT_RACE, DEFAULT_ROSTER, FXS, MAX_CLASS_LEVEL, RACES, SCENES, allowedRaces, classLevel, xpToReach,
+  CLASSES, DEFAULT_RACE, DEFAULT_ROSTER, enemyId, enemyIndex, FXS, LIMITS, MAX_CLASS_LEVEL, MAX_MISSION_GOLD, RACES, SCENES, allowedRaces, classLevel, xpToReach,
   type Chapter, type Fx, type Goal, type Line, type MapData, type RosterUnit,
 } from '@tactics/core';
 import { useLayoutEffect } from 'react';
@@ -24,12 +24,19 @@ const chapterDraft = (ch: Chapter | null, map: MapData): ChapterDraft => {
     id: ch?.id ?? null, mapId: map.id, label: ch?.label ?? '', title: ch?.title ?? '', blurb: ch?.blurb ?? '', gold: ch?.gold ?? 150, crt: !!ch?.crt,
     enemies: ch ? clone(ch.enemies) : defaultEnemies(map), required: [...(ch?.required ?? [])], before: clone(ch?.before ?? []), after: clone(ch?.after ?? []),
     goalType: g.type, rounds: g.type === 'survive' ? g.rounds : 5, cells: g.type === 'reach' ? clone(g.cells) : [],
-    boss: g.type === 'boss' ? Number(g.unitId.slice(5)) : 0,
+    boss: g.type === 'boss' ? enemyIndex(g.unitId) : 0,
     unlockOn: !!ch?.unlock, unlock, unlockLevel: classLevel({ id: '', ...unlock }, unlock.classId),
   };
 };
-const goalOf = (d: ChapterDraft): Goal => d.goalType === 'survive' ? { type: 'survive', rounds: d.rounds } : d.goalType === 'reach' ? { type: 'reach', cells: d.cells }
-  : d.goalType === 'boss' ? { type: 'boss', unitId: `enemy${d.boss}` } : { type: 'rout' };
+function goalOf(d: ChapterDraft): Goal {
+  switch (d.goalType) {
+    case 'rout': return { type: 'rout' };
+    case 'survive': return { type: 'survive', rounds: d.rounds };
+    case 'reach': return { type: 'reach', cells: d.cells };
+    case 'boss': return { type: 'boss', unitId: enemyId(d.boss) };
+    default: return d.goalType satisfies never;
+  }
+}
 
 export function Campaign() {
   const maps = allMaps().filter(m => !BUILTIN_MAPS.some(b => b.id === m.id));
@@ -79,9 +86,9 @@ export function Campaign() {
   const story = () => (
     <>
       <div className="ws-fields">
-        <Field label="Etichetta"><Text value={d.label} set={v => { d.label = v; }} maxLength={30} placeholder="es. Capitolo 4" /></Field>
-        <Field label="Titolo"><Text value={d.title} set={v => { d.title = v; }} maxLength={60} /></Field>
-        <Field label="Descrizione" wide help="Una riga, sotto il titolo nella lista dei capitoli."><Text value={d.blurb} set={v => { d.blurb = v; }} maxLength={160} /></Field>
+        <Field label="Etichetta"><Text value={d.label} set={v => { d.label = v; }} maxLength={LIMITS.label} placeholder="es. Capitolo 4" /></Field>
+        <Field label="Titolo"><Text value={d.title} set={v => { d.title = v; }} maxLength={LIMITS.name} /></Field>
+        <Field label="Descrizione" wide help="Una riga, sotto il titolo nella lista dei capitoli."><Text value={d.blurb} set={v => { d.blurb = v; }} maxLength={LIMITS.blurb} /></Field>
       </div>
       <Check label="La battaglia si gioca dentro il monitor della cameretta" on={!!d.crt} set={v => { d.crt = v; }} />
     </>
@@ -107,7 +114,7 @@ export function Campaign() {
         ))}
       </div>
       {d.goalType === 'survive' && (
-        <div className="ws-fields"><Field label="Durata" unit="round"><Num value={d.rounds} set={v => { d.rounds = v; }} min={1} max={30} /></Field></div>
+        <div className="ws-fields"><Field label="Durata" unit="round"><Num value={d.rounds} set={v => { d.rounds = v; }} min={1} max={LIMITS.rounds} /></Field></div>
       )}
       {d.goalType === 'boss' && (
         <div className="ws-fields">
@@ -147,12 +154,12 @@ export function Campaign() {
           ))}
         </fieldset>
         <div className="ws-fields">
-          <Field label="Premio alla prima vittoria" unit="oro" help="Più XP. Le vittorie dopo la prima non pagano."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={10000} /></Field>
+          <Field label="Premio alla prima vittoria" unit="oro" help="Più XP. Le vittorie dopo la prima non pagano."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={MAX_MISSION_GOLD} /></Field>
         </div>
         <Check label="Alla prima vittoria si unisce un alleato" on={d.unlockOn} set={v => { d.unlockOn = v; }} />
         {d.unlockOn && (
           <div className="ws-fields">
-            <Field label="Nome dell'alleato"><Text value={un.name} set={v => { un.name = v; }} maxLength={20} /></Field>
+            <Field label="Nome dell'alleato"><Text value={un.name} set={v => { un.name = v; }} maxLength={LIMITS.unitName} /></Field>
             <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={race} set={setRace} /></Field>
             <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={un.classId} set={v => { un.classId = v; resetXp(); }} /></Field>
             <Field label="Livello"><Num value={d.unlockLevel} set={v => { d.unlockLevel = v; resetXp(); }} min={1} max={MAX_CLASS_LEVEL} /></Field>
@@ -235,11 +242,11 @@ function Lines({ lines, k, title }: { lines: Line[]; k: string; title: string })
           <div key={i} className="ws-line open">
             <div className="ws-fields">
               <Field label="Scena"><Select options={SCENES.map(s => [s, SCENE_NAMES[s]] as [Line['scene'], string])} value={l.scene} set={v => { l.scene = v; }} /></Field>
-              <Field label="Chi parla"><Text value={l.who ?? ''} set={v => { if (v.trim()) l.who = v; else delete l.who; }} maxLength={20} placeholder="Narratore" /></Field>
+              <Field label="Chi parla"><Text value={l.who ?? ''} set={v => { if (v.trim()) l.who = v; else delete l.who; }} maxLength={LIMITS.unitName} placeholder="Narratore" /></Field>
               <Field label="Effetto">
                 <Select<string> options={[['', 'Nessuno'], ...FXS.map(f => [f, FX_NAMES[f]] as [string, string])]} value={l.fx ?? ''} set={v => { if (v) l.fx = v as Fx; else delete l.fx; }} />
               </Field>
-              <Field label="Testo" wide><textarea className="field" rows={2} maxLength={200} value={l.text} onChange={ev => { l.text = ev.target.value; }} /></Field>
+              <Field label="Testo" wide><textarea className="field" rows={2} maxLength={LIMITS.line} value={l.text} onChange={ev => { l.text = ev.target.value; }} /></Field>
             </div>
             <div className={`ws-story${l.who ? '' : ' narration'}`}>{l.who && <b>{l.who}</b>}<span>{l.text || '…'}</span></div>
             <div className="ws-line-actions">

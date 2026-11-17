@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { LIMITS } from '@tactics/core';
+import { useLayoutEffect, useState } from 'react';
 import { api, type Music as Library } from '../api';
 import { getLibrary, playCode, setLibrary } from '../music';
 import { Btn, Confirm, confirmFirst, EditHead, Field, Frame, ListPane, MasterDetail, Row, SaveBar, Select, Text, UNSAVED } from './parts';
@@ -11,9 +12,15 @@ export function Music() {
   /** an error in the Strudel code of the preview */
   const [problem, setProblem] = useState('');
   const lib = getLibrary();
-  // the slots follow the library, unless they hold unsaved changes
-  if (!ws.slots || ws.slots.orig !== JSON.stringify(slotsOf(lib)) && !dirty(ws.slots)) ws.slots = edit(slotsOf(lib));
-  const s = ws.slots;
+  // the slots follow the library, unless they hold unsaved changes; the open draft goes away with its track. Fixed before the first paint
+  const staleSlots = !ws.slots || (ws.slots.orig !== JSON.stringify(slotsOf(lib)) && !dirty(ws.slots));
+  const staleTrack = !ws.tEdit || (!!ws.tEdit.d.id && !lib.tracks.some(t => t.id === ws.tEdit!.d.id));
+  useLayoutEffect(() => {
+    if (staleSlots) ws.slots = edit(slotsOf(lib));
+    if (staleTrack) ws.tEdit = blankTrack();
+  });
+  if (staleSlots || staleTrack) return null;
+  const s = ws.slots!;
   const choices: [string, string][] = [['', 'Nessuna (silenzio)'], ...lib.tracks.map(t => [t.id, t.name] as [string, string])];
   const saveSlots = () => void mutate((async () => {
     let l = lib;
@@ -22,9 +29,7 @@ export function Music() {
     return l;
   })(), l => { setLibrary(l); ws.slots = null; });
 
-  // the open draft goes away with its track
-  if (ws.tEdit?.d.id && !lib.tracks.some(t => t.id === ws.tEdit!.d.id)) ws.tEdit = null;
-  const e = ws.tEdit ??= blankTrack();
+  const e = ws.tEdit!;
   const d = e.d;
   /** Opens a draft in the editor. */
   const open = (next: Edit<TrackDraft> = e) => { ws.tEdit = next; ws.open = true; };
@@ -78,9 +83,9 @@ export function Music() {
         </Confirm>
         <div className="ws-pane">
           <div className="ws-fields">
-            <Field label="Nome del brano" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={60} /></Field>
+            <Field label="Nome del brano" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={LIMITS.name} /></Field>
             <Field label="Codice Strudel" wide>
-              <textarea className="field code" required maxLength={20000} spellCheck={false} value={d.code} placeholder="Incolla qui il codice da strudel.cc" onChange={ev => { d.code = ev.target.value; }} />
+              <textarea className="field code" required maxLength={LIMITS.trackCode} spellCheck={false} value={d.code} placeholder="Incolla qui il codice da strudel.cc" onChange={ev => { d.code = ev.target.value; }} />
             </Field>
           </div>
           <p className="error" role="alert" hidden={!problem}>{problem}</p>

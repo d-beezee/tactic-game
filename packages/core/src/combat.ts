@@ -1,5 +1,6 @@
 import type { ActionDef } from './classes';
 import { DIRS, facingToward, heightAt, inBounds, isWalkable, key, manhattan, type MapData, type Pos } from './map';
+import type { StatusId } from './statuses';
 import { effectiveStat, type Unit } from './units';
 
 export type Side = 'front' | 'flank' | 'back';
@@ -19,7 +20,16 @@ export function sideOf(from: Pos, target: Unit): Side {
   return 'flank';
 }
 
-export const heightMult = (dh: number) => 1 + 0.05 * Math.max(-4, Math.min(4, dh));
+/** % damage bonus from standing `dh` levels above the target (negative below), capped at 4 levels. */
+export const heightPct = (dh: number) => 5 * Math.max(-4, Math.min(4, dh));
+export const heightMult = (dh: number) => 1 + heightPct(dh) / 100;
+
+/** Whether `t` shrugs off a status outright, before any roll. */
+export const resistsStatus = (t: Unit, id: StatusId) => id === 'stun' && t.mods.stunImmune;
+/** % chance an action's status lands, with the actor's bonus; 100 or more always lands. */
+export const statusChance = (u: Unit, st: NonNullable<ActionDef['status']>) => (st.chance ?? 100) + u.mods.chanceBonus;
+/** Cells an action pushes, with the actor's bonus. */
+export const pushCells = (u: Unit, a: ActionDef) => (a.push ?? 0) + u.mods.pushBonus;
 
 /** Extra range a unit gets on an action, from its passive and race. Only ranged actions use it. */
 export const rangeBonus = (u: Unit, a: ActionDef) => u.mods.range + (a.stat === 'mag' ? u.mods.magicRange : 0);

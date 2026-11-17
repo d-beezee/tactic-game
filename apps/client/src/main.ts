@@ -1,6 +1,9 @@
+import { mountHud } from './hud';
 import { showMenu } from './menu';
 import { setMenu, toMenu } from './nav';
 import { splash } from './splash';
+
+mountHud();
 
 // the menu loads behind the title screen
 void splash();

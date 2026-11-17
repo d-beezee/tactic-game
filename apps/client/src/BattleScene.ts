@@ -4,15 +4,14 @@ import { buzz, play } from './sfx';
 import { COLOR, TEAM_COLOR, reducedMotion, settings } from './theme';
 import { ALL_SPRITE_DIRS, spriteDir } from './sprites';
 import { BLOCK, WATER_FRAMES, makeTextures } from './tiles';
+import { HS, IsoView, iso, TH, TW } from './isoView';
+import { sideText } from './ui';
 
 export { TEAM_COLOR } from './theme';
 
-// One texel of terrain = one texel of a unit sprite = 1.25 world px.
-const TW = BLOCK.w * BLOCK.scale, TH = BLOCK.top * BLOCK.scale, HS = BLOCK.side * BLOCK.scale, BASE = HS;
+const BASE = HS;
 const UNIT_TOP = 64; // sprite height above the tile, for camera bounds
 
-/** Screen position of the centre of a cell's top face, from VIEW coordinates (after camera rotation). */
-const iso = (x: number, y: number, h: number) => ({ x: ((x - y) * TW) / 2, y: ((x + y) * TH) / 2 - h * HS });
 const DIR_LIST = Object.keys(DIRS) as Dir[];
 
 interface UnitSprite {
@@ -35,7 +34,6 @@ export interface Insets { top: number; right: number; bottom: number; left: numb
 // phones: timeline + banner on top, unit card + two button rows below
 const battleInsets = (w: number): Insets => ({ top: w < 640 ? 140 : 150, right: 0, bottom: w < 640 ? 300 : 120, left: 0 });
 
-const SIDE_LABEL: Record<Side, string> = { front: '', flank: 'Di fianco ×1,25', back: 'Alle spalle ×1,5' };
 
 export class BattleScene extends Phaser.Scene {
   private overlays = new Map<string, Phaser.GameObjects.Graphics>();
@@ -43,8 +41,6 @@ export class BattleScene extends Phaser.Scene {
   private hits = new Map<string, { p: Pos; poly: Phaser.Geom.Polygon; depth: number }>();
   private cellObjects = new Map<string, Phaser.GameObjects.GameObject[]>();
   private water = new Set<Phaser.GameObjects.Image>();
-  /** Camera rotation in 90° steps. Game logic stays in grid coordinates; only drawing uses view coordinates. */
-  private rot = 0;
   private units = new Map<string, Unit>();
   private lit: { cells: Pos[]; color: number; alpha: number }[] = [];
   /** cells a battle goal asks to reach: always lit, under every other highlight */
@@ -64,65 +60,32 @@ export class BattleScene extends Phaser.Scene {
   private fit = { zoom: 1, minX: 0, maxX: 0, minY: 0, maxY: 0 };
   private follower: { el: HTMLElement; unitId: string } | null = null;
 
+  private grid: IsoView;
+
   constructor(
-    private mapData: MapData,
+    mapData: MapData,
     private initialUnits: Unit[],
     private onReady: (scene: BattleScene) => void,
     private insets: (width: number, height: number) => Insets = battleInsets,
   ) {
     super('battle');
+    this.grid = new IsoView(mapData);
   }
 
-  // ---------- grid ↔ view ----------
+  private get mapData() { return this.grid.map; }
 
-  /** Rotate a position n quarter turns inside a w×h grid. */
-  private turn(p: Pos, w: number, h: number, n: number): Pos {
-    let { x, y } = p;
-    for (let i = 0; i < n; i++) [x, y, w, h] = [h - 1 - y, x, h, w];
-    return { x, y };
-  }
-
-  private view(p: Pos): Pos { return this.turn(p, this.mapData.width, this.mapData.height, this.rot); }
-
-  /** Grid cell shown at a view position, or null outside the map. */
-  private fromView(v: Pos): Pos | null {
-    const { w, h } = this.viewDims();
-    if (v.x < 0 || v.y < 0 || v.x >= w || v.y >= h) return null;
-    return this.turn(v, w, h, (4 - this.rot) % 4);
-  }
-
-  private viewDims() {
-    const { width: w, height: h } = this.mapData;
-    return this.rot % 2 ? { w: h, h: w } : { w, h };
-  }
-
-  /** Where a cell is drawn: grid pos + height to world coordinates. */
-  private at(p: Pos, h = heightAt(this.mapData, p)) {
-    const v = this.view(p);
-    return iso(v.x, v.y, h);
-  }
-
-  private depthOf(p: Pos) {
-    const v = this.view(p);
-    return (v.x + v.y) * 10;
-  }
-
-  private rotateDir(d: Dir, steps: number): Dir {
-    let x: number = DIRS[d].x, y: number = DIRS[d].y;
-    for (let i = 0; i < ((steps % 4) + 4) % 4; i++) [x, y] = [-y, x];
-    return DIR_LIST.find(k => DIRS[k].x === x && DIRS[k].y === y)!;
-  }
-
-  /** Grid facing as seen on screen. */
-  private viewDir(d: Dir): Dir { return this.rotateDir(d, this.rot); }
-
+  /** Grid cell to view position, and the other geometry helpers: see IsoView. */
+  private view(p: Pos) { return this.grid.view(p); }
+  private fromView(v: Pos) { return this.grid.fromView(v); }
+  private at(p: Pos, h?: number) { return this.grid.at(p, h); }
+  private depthOf(p: Pos) { return this.grid.depthOf(p); }
   /** Screen direction (as the HUD arrows show it) back to a grid facing. */
-  gridDir(screen: Dir): Dir { return this.rotateDir(screen, -this.rot); }
+  gridDir(screen: Dir): Dir { return this.grid.gridDir(screen); }
 
   /** Rotate the camera by 90° steps; redraws map, units and current highlights behind a short fade. */
   rotate(steps: 1 | -1) {
     const swap = () => {
-      this.rot = (this.rot + steps + 4) % 4;
+      this.grid.rot = (this.grid.rot + steps + 4) % 4;
       const lit = this.lit;
       this.setMap(this.mapData);
       for (const u of this.units.values()) this.syncUnit(u);
@@ -297,7 +260,7 @@ export class BattleScene extends Phaser.Scene {
     this.overlays.clear();
     this.water.clear();
     this.lit = [];
-    this.mapData = m;
+    this.grid.map = m;
     for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) this.drawCell({ x, y });
     this.paint(this.goalCells, COLOR.brass, 0.5);
     this.fitCamera();
@@ -305,7 +268,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Redraw one cell after its height or terrain changed, plus the cells it shades. Camera stays put. */
   redrawCell(m: MapData, p: Pos) {
-    this.mapData = m;
+    this.grid.map = m;
     const v = this.view(p);
     for (const q of [p, this.fromView({ x: v.x + 1, y: v.y }), this.fromView({ x: v.x + 2, y: v.y })]) {
       if (!q) continue;
@@ -353,7 +316,7 @@ export class BattleScene extends Phaser.Scene {
 
   private fitCamera() {
     const maxH = Math.max(...this.mapData.heights.flat());
-    const v = this.viewDims();
+    const v = this.grid.dims();
     const minX = iso(0, v.h - 1, 0).x - TW / 2, maxX = iso(v.w - 1, 0, 0).x + TW / 2;
     const minY = iso(0, 0, maxH).y - TH / 2 - UNIT_TOP, maxY = iso(v.w - 1, v.h - 1, 0).y + TH / 2 + BASE;
     this.moteZone.setTo(minX, minY, maxX - minX, maxY - minY);
@@ -445,7 +408,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private face(s: UnitSprite, gridFacing: Dir) {
-    const f = this.viewDir(gridFacing);
+    const f = this.grid.viewDir(gridFacing);
     if (s.dir) s.img?.setTexture(spriteKey(s.dir, f));
     const d = DIRS[f];
     const v = { x: ((d.x - d.y) * TW) / 2, y: ((d.x + d.y) * TH) / 2 };
@@ -566,7 +529,7 @@ export class BattleScene extends Phaser.Scene {
     if (!reducedMotion()) this.cameras.main.shake(side === 'back' ? 180 : 120, side === 'back' ? 0.006 : 0.003);
     play(side === 'front' ? 'hit' : 'heavy');
     buzz(30);
-    this.popText(unit, String(amount), '#ffffff', SIDE_LABEL[side]);
+    this.popText(unit, String(amount), '#ffffff', side === 'front' ? '' : sideText(side));
   }
 
   healFx(unit: Unit, amount: number) {

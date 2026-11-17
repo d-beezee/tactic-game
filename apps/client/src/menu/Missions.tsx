@@ -1,4 +1,4 @@
-import { CLASSES, type MapData } from '@tactics/core';
+import { CLASSES, recruitId, type MapData } from '@tactics/core';
 import type { Account, Mission } from '../api';
 import { allMaps } from '../maps';
 import { enemySummary, raceName } from '../ui';
@@ -17,7 +17,7 @@ export function Missions({ list, player, fight, ...page }: PageProps & { list: M
               <span className="rn">{m.name}</span>
               <span className="rc">{m.done ? 'Vinta oggi · torna domani' : `+${m.gold} oro e XP · ${map?.name ?? 'mappa mancante'}`}</span>
               <span className="rc">{enemySummary(m.enemies)}</span>
-              {m.recruit && !player.roster.some(u => u.id === `m-${m.id}`) && (
+              {m.recruit && !player.roster.some(u => u.id === recruitId(m.id)) && (
                 <span className="rc">Alla prima vittoria si unisce {m.recruit.name}, {raceName(m.recruit.raceId)} {CLASSES[m.recruit.classId].name}</span>
               )}
             </button>

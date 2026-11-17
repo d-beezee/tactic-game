@@ -1,4 +1,5 @@
-import { CAMPAIGN_SEED } from '@tactics/core';
+import type { Chapter } from '@tactics/core';
+import chapterSeed from './migrations/011-chapters.json';
 import pg from 'pg';
 
 /** Append only: a migration that already ran in production must never change. */
@@ -73,7 +74,7 @@ const MIGRATIONS: (string | ((db: pg.PoolClient) => Promise<void>))[] = [
    );
    CREATE INDEX pvp_matches_player_a ON pvp_matches (player_a);
    CREATE INDEX pvp_matches_player_b ON pvp_matches (player_b);`,
-  // campaign chapters won, by id from the core's CAMPAIGN; the row is the once-only payout check
+  // campaign chapters won, by chapter id; the row is the once-only payout check
   `CREATE TABLE campaign_wins (
      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
      chapter_id text NOT NULL,
@@ -168,9 +169,9 @@ $: s("bd ~ bd [~ bd], ~ sd ~ sd, hh*8")
      created_at timestamptz NOT NULL DEFAULT now()
    );
    ALTER TABLE battles ADD COLUMN goal jsonb, ADD COLUMN protect jsonb;`,
-  // the chapters that shipped in code, with their maps, keeping their ids so campaign_wins stays valid
+  // the chapters that shipped in code, with their maps, keeping their ids so campaign_wins stays valid; a frozen copy, never edit it
   async db => {
-    for (const [i, ch] of CAMPAIGN_SEED.entries()) {
+    for (const [i, ch] of (chapterSeed as unknown as Chapter[]).entries()) {
       await db.query('INSERT INTO maps (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [ch.mapId, JSON.stringify(ch.map)]);
       await db.query(
         `INSERT INTO chapters (id, position, label, title, blurb, map_id, gold, enemies, goal, required, unlock, crt, before, after)

@@ -63,9 +63,10 @@ export function updateUnit(p: Player, unitId: string, change: UnitChange): Playe
   return { ...p, roster: p.roster.map(u => (u === unit ? next : u)) };
 }
 
-
-export function kickUnit(p: Player, unitId: string): Player {
-  const unitIdx = p.roster.findIndex(u => u.id === unitId);
-  if (unitIdx < 0) throw new PlayerError('Unità sconosciuta');
-  return { ...p, roster: p.roster.filter(u => u.id != unitId) };
+/** Removes a unit for good. `keep`: ids the campaign requires, which cannot leave. The last unit cannot leave either. */
+export function kickUnit(p: Player, unitId: string, keep: string[] = []): Player {
+  if (!p.roster.some(u => u.id === unitId)) throw new PlayerError('Unità sconosciuta');
+  if (keep.includes(unitId)) throw new PlayerError('Questa unità serve alla campagna e non può lasciare la caserma');
+  if (p.roster.length <= 1) throw new PlayerError('Non puoi restare senza unità');
+  return { ...p, roster: p.roster.filter(u => u.id !== unitId) };
 }

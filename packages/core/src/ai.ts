@@ -1,6 +1,6 @@
 import { actionTargets, activeUnit, affectedBy, living, type BattleAction, type BattleState } from './battle';
 import type { ActionDef } from './classes';
-import { expectedAmount, pushResult } from './combat';
+import { expectedAmount, pushCells, pushResult, resistsStatus, statusChance } from './combat';
 import { facingToward, manhattan, samePos, type Pos } from './map';
 import { destinations } from './pathfinding';
 import { STATUSES } from './statuses';
@@ -50,15 +50,15 @@ function scoreAction(s: BattleState, u: Unit, from: Pos, action: ActionDef, targ
       if (amount >= t.hp) continue;
     }
     const st = action.status;
-    if (st && !t.statuses.some(x => x.id === st.id && x.turns >= st.turns) && !(st.id === 'stun' && t.mods.stunImmune)) {
+    if (st && !t.statuses.some(x => x.id === st.id && x.turns >= st.turns) && !resistsStatus(t, st.id)) {
       const tick = Math.max(1, Math.round((t.stats.maxHp * Math.abs(STATUSES[st.id].tickPct ?? 0)) / 100));
       const value = st.id === 'stun' ? 0.3 * t.hp
         : st.id === 'poison' ? Math.min(3 * tick, t.hp)
         : st.id === 'regen' ? 0.5 * Math.min(3 * tick, t.stats.maxHp - t.hp)
         : STATUSES[st.id].buff ? 8 : 10;
-      score += value * Math.min(1, ((st.chance ?? 100) + u.mods.chanceBonus) / 100);
+      score += value * Math.min(1, statusChance(u, st) / 100);
     }
-    if (action.push && !t.mods.pushImmune) score += pushResult(s.map, s.units, from, t, action.push + u.mods.pushBonus).damage;
+    if (action.push && !t.mods.pushImmune) score += pushResult(s.map, s.units, from, t, pushCells(u, action)).damage;
   }
   return score;
 }

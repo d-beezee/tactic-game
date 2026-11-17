@@ -30,9 +30,12 @@ export interface Unit {
 
 const GROWING: (keyof Stats)[] = ['maxHp', 'atk', 'def', 'mag', 'speed'];
 
+/** Optional parts of a new unit: class level (1), passive class id (none), equipment (none), race (DEFAULT_RACE). */
+export interface UnitOpts { level?: number; passive?: string | null; equip?: Equip; raceId?: string }
+
 export function createUnit(
   id: string, name: string, team: Team, classId: string, pos: Pos, facing: Dir,
-  level = 1, passive: string | null = null, equip: Equip = {}, raceId = DEFAULT_RACE,
+  { level = 1, passive = null, equip = {}, raceId = DEFAULT_RACE }: UnitOpts = {},
 ): Unit {
   const cls = CLASSES[classId];
   if (!cls) throw new Error(`unknown class ${classId}`);

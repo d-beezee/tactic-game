@@ -1,4 +1,5 @@
-import { RACES, type MapData } from '@tactics/core';
+import { LIMITS, MAX_MISSION_GOLD, RACES, type MapData } from '@tactics/core';
+import { useLayoutEffect } from 'react';
 import { api, type Mission } from '../api';
 import { allMaps } from '../maps';
 import { getLibrary } from '../music';
@@ -15,10 +16,12 @@ const missionDraft = (m: Mission): MissionDraft => ({
 
 export function Missions() {
   const maps = allMaps();
-  // the open draft goes away with its mission or its map
-  if (ws.mEdit?.d.id && !ws.missions.some(m => m.id === ws.mEdit!.d.id)) ws.mEdit = null;
-  if (ws.mEdit && !maps.some(m => m.id === ws.mEdit!.d.mapId)) ws.mEdit = null;
-  const e = ws.mEdit ??= edit(blankMission(maps[0]));
+  // the open draft goes away with its mission or its map; a blank one takes its place, before the first paint
+  const m = ws.mEdit?.d;
+  const stale = !m || (!!m.id && !ws.missions.some(x => x.id === m.id)) || !maps.some(x => x.id === m.mapId);
+  useLayoutEffect(() => { if (stale) ws.mEdit = edit(blankMission(maps[0])); });
+  if (stale) return null;
+  const e = ws.mEdit!;
   const d = e.d, map = maps.find(m => m.id === d.mapId)!;
   /** Opens a draft in the editor. */
   const open = (next: Edit<MissionDraft> = e) => { ws.mEdit = next; ws.open = true; };
@@ -39,11 +42,11 @@ export function Missions() {
 
   const data = () => (
     <div className="ws-fields">
-      <Field label="Nome della missione" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={60} placeholder="es. Il ponte dei corvi" /></Field>
+      <Field label="Nome della missione" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={LIMITS.name} placeholder="es. Il ponte dei corvi" /></Field>
       <Field label="Mappa" help="Cambiare mappa rimette i nemici sulle partenze nemiche.">
         <Select options={maps.map(m => [m.id, m.name] as [string, string])} value={d.mapId} set={v => { d.mapId = v; d.enemies = defaultEnemies(maps.find(m => m.id === v)!); }} />
       </Field>
-      <Field label="Premio alla vittoria" unit="oro" help="Più XP, una volta al giorno."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={10000} /></Field>
+      <Field label="Premio alla vittoria" unit="oro" help="Più XP, una volta al giorno."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={MAX_MISSION_GOLD} /></Field>
       <Field label="Musica">
         <Select<string> options={[['', 'Quella delle battaglie'], ...getLibrary().tracks.map(t => [t.id, t.name] as [string, string])]} value={d.trackId ?? ''} set={v => { d.trackId = v || null; }} />
       </Field>
@@ -59,7 +62,7 @@ export function Missions() {
         <Check label="Alla prima vittoria si unisce una recluta" on={rc.on} set={v => { rc.on = v; }} />
         {rc.on ? (
           <div className="ws-fields">
-            <Field label="Nome della recluta"><Text value={rc.name} set={v => { rc.name = v; }} maxLength={20} /></Field>
+            <Field label="Nome della recluta"><Text value={rc.name} set={v => { rc.name = v; }} maxLength={LIMITS.unitName} /></Field>
             <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={rc.raceId} set={v => { rc.raceId = v; }} /></Field>
             <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={rc.classId} set={v => { rc.classId = v; }} /></Field>
           </div>

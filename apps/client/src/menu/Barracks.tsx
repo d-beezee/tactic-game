@@ -45,7 +45,7 @@ function Pedestal({ unit }: { unit: RosterUnit }) {
 
 export function Barracks({ player, selected, select, update, kick, ...page }: PageProps & {
   player: Account; selected: string; select: (unitId: string) => void; update: (unitId: string, change: UnitChange) => void;
-  kick: (unitId: string) => void;
+  kick: (unitId: string) => void | Promise<void>;
 }) {
   const roster = player.roster;
   const unit = roster.find(u => u.id === selected)!;
@@ -70,8 +70,8 @@ export function Barracks({ player, selected, select, update, kick, ...page }: Pa
         <div className="hero-unit">
           <Pedestal unit={unit} />
           <div>
-            <button className="btn" onClick={() => {kick(unit.id); select(roster[0].id)}}
-              style={{backgroundColor: "none", color: "black", float: "right"}}
+            <button className="btn" onClick={() => confirm(`${unit.name} lascia la caserma per sempre. Continuare?`) && kick(unit.id)}
+              style={{ color: 'black', float: 'right' }}
             >Lascia Caserma</button>
             <h3>{unit.name}</h3>
             <p className="sub">{raceName(unit.raceId)} · {CLASSES[unit.classId].name} Lv {eff.level}</p>

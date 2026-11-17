@@ -1,4 +1,5 @@
 import type { StatusId } from './statuses';
+import type { RaceId } from './races';
 
 export interface Stats {
   maxHp: number;
@@ -111,9 +112,9 @@ const LUNGE = melee('lunge', 'Affondo', 1, {}, 2);
 const DIVE = melee('dive', 'Picchiata', 1.2, { push: 1 });
 const WARM_LIGHT = spell('warm-light', 'Luce calda', 'ally', 0, 3, { area: 1, status: { id: 'atk-up', turns: 3 } });
 
-const TORBIDI = ['peatfolk'], CORVIDI = ['corvid'], LUCIGENI = ['lumen'];
+const TORBIDI: RaceId[] = ['peatfolk'], CORVIDI: RaceId[] = ['corvid'], LUCIGENI: RaceId[] = ['lumen'];
 
-export const CLASSES: Record<string, ClassDef> = {
+const CLASS_DEFS = {
   warrior: {
     id: 'warrior',
     name: 'Guerriero',
@@ -296,4 +297,7 @@ export const CLASSES: Record<string, ClassDef> = {
     ],
     passive: { name: 'Instabilità', description: '+15% alla probabilità degli stati', mods: { chanceBonus: 15 } },
   },
-};
+} satisfies Record<string, ClassDef>;
+/** Id of a class defined in code. Ids from the network or the DB stay plain strings until checked against CLASSES. */
+export type ClassId = keyof typeof CLASS_DEFS;
+export const CLASSES: Record<string, ClassDef> = CLASS_DEFS;

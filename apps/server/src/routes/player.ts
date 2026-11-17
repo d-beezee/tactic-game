@@ -15,8 +15,11 @@ export function playerRoutes(app: App, pool: pg.Pool) {
     return c.json((await mutate(pool, c.get('userId'), p => ({ player: updateUnit(p, c.req.param('id'), change) }))).player);
   });
 
-  app.post('/api/units/kick/:id', async c =>
-    c.json((await mutate(pool, c.get('userId'), p => ({ player: kickUnit(p, c.req.param('id')) }))).player));
+  app.post('/api/units/kick/:id', async c => {
+    const { rows } = await pool.query('SELECT DISTINCT jsonb_array_elements_text(required) AS id FROM chapters');
+    const keep = rows.map(r => r.id as string);
+    return c.json((await mutate(pool, c.get('userId'), p => ({ player: kickUnit(p, c.req.param('id'), keep) }))).player);
+  });
 
   app.post('/api/shop/buy', async c => {
     const { itemId } = await body(c);

@@ -2,7 +2,7 @@
 // and a rehearsal battle, when the whole menu is unmounted. A reload asks first.
 // Components read `ws` and change it in place: the store redraws the Officina by itself.
 import {
-  CLASSES, DEFAULT_RACE, allowedRaces,
+  CLASSES, DEFAULT_RACE, ENEMY_CLASSES, allowedRaces,
   type Chapter, type ChapterInput, type Goal, type MapData, type MissionEnemy, type Pos, type RosterUnit,
 } from '@tactics/core';
 import { api, ApiError, type Account, type Mission, type User } from '../api';
@@ -56,7 +56,7 @@ const store = createStore({
   open: false,
   queries: {} as Partial<Record<Tool, string>>,
   /** the last enemy placed, reused by the next tap */
-  brush: { raceId: DEFAULT_RACE, classId: 'warrior', level: 1 },
+  brush: { raceId: DEFAULT_RACE as string, classId: 'warrior', level: 1 },
   mEdit: null as Edit<MissionDraft> | null,
   cEdit: null as Edit<ChapterDraft> | null,
   tEdit: null as Edit<TrackDraft> | null,
@@ -128,4 +128,4 @@ export const trackName = (id: string | null) => getLibrary().tracks.find(t => t.
 export const baseClassesOf = (raceId: string) => Object.values(CLASSES).filter(c => !c.requires && allowedRaces(c.id).includes(raceId));
 /** Starting enemies for a new mission or chapter: the map's enemy spawns, base classes in turn, level 1. */
 export const defaultEnemies = (m: MapData): MissionEnemy[] =>
-  m.spawns.B.slice(0, m.maxDeploy).map((pos, i) => ({ classId: ['warrior', 'archer', 'cleric'][i % 3], level: 1, pos: { ...pos } }));
+  m.spawns.B.slice(0, m.maxDeploy).map((pos, i) => ({ classId: ENEMY_CLASSES[i % ENEMY_CLASSES.length], level: 1, pos: { ...pos } }));

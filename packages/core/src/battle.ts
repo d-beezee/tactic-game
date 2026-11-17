@@ -1,5 +1,5 @@
 import type { ActionDef } from './classes';
-import { areaCells, areaRadius, expectedAmount, inRange, pushResult, rangeBonus, sideOf, type Side } from './combat';
+import { areaCells, areaRadius, expectedAmount, inRange, pushCells, pushResult, rangeBonus, resistsStatus, sideOf, statusChance, type Side } from './combat';
 import { rollInitiative } from './initiative';
 import { DIRS, facingToward, inBounds, isWalkable, key, manhattan, samePos, validateMap, type Dir, type MapData, type Pos, type Team } from './map';
 import { destinations, pathTo, reachable } from './pathfinding';
@@ -201,6 +201,14 @@ function hurt(s: BattleState, t: Unit, amount: number): boolean {
   return true;
 }
 
+/** ±10% around the expected amount, at least 1. Advances the seed. */
+const VARIANCE = 0.1;
+function rollAmount(s: BattleState, u: Unit, def: ActionDef, t: Unit): number {
+  let r: number;
+  [r, s.seed] = nextRandom(s.seed);
+  return Math.max(1, Math.round(expectedAmount(s.map, u, u.pos, def, t) * (1 - VARIANCE + r * 2 * VARIANCE)));
+}
+
 /** One target of an action: damage or heal, then status, then push. */
 function hit(s: BattleState, u: Unit, def: ActionDef, t: Unit) {
   let r: number;
@@ -209,8 +217,7 @@ function hit(s: BattleState, u: Unit, def: ActionDef, t: Unit) {
       [r, s.seed] = nextRandom(s.seed);
       if (r * 100 < t.mods.dodgePct) return void s.events.push({ type: 'dodge', unitId: t.id });
     }
-    [r, s.seed] = nextRandom(s.seed);
-    const amount = Math.max(1, Math.round(expectedAmount(s.map, u, u.pos, def, t) * (0.9 + r * 0.2)));
+    const amount = rollAmount(s, u, def, t);
     t.hp = Math.max(0, t.hp - amount);
     s.events.push({ type: 'damage', unitId: t.id, amount, side: sideOf(u.pos, t) });
     if (t.hp === 0) {
@@ -223,24 +230,23 @@ function hit(s: BattleState, u: Unit, def: ActionDef, t: Unit) {
       hurt(s, u, back);
     }
   } else if (def.effect === 'heal') {
-    [r, s.seed] = nextRandom(s.seed);
-    const amount = Math.max(1, Math.round(expectedAmount(s.map, u, u.pos, def, t) * (0.9 + r * 0.2)));
+    const amount = rollAmount(s, u, def, t);
     const healed = Math.min(amount, t.stats.maxHp - t.hp);
     t.hp += healed;
     s.events.push({ type: 'heal', unitId: t.id, amount: healed });
   }
   if (t.hp <= 0) return;
   const st = def.status;
-  if (st && !(st.id === 'stun' && t.mods.stunImmune)) {
+  if (st && !resistsStatus(t, st.id)) {
     let lands = true;
     if (st.chance !== undefined) {
       [r, s.seed] = nextRandom(s.seed);
-      lands = r * 100 < st.chance + u.mods.chanceBonus;
+      lands = r * 100 < statusChance(u, st);
     }
     if (lands) addStatus(s, t, st.id, st.turns + (STATUSES[st.id].buff ? u.mods.buffTurns : 0));
   }
   if (def.push && !t.mods.pushImmune) {
-    const { path, damage } = pushResult(s.map, s.units, u.pos, t, def.push + u.mods.pushBonus);
+    const { path, damage } = pushResult(s.map, s.units, u.pos, t, pushCells(u, def));
     t.pos = { ...path[path.length - 1] };
     s.events.push({ type: 'push', unitId: t.id, path, damage });
     if (damage && hurt(s, t, damage)) s.xp[u.id] += XP_KILL;

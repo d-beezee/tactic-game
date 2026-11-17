@@ -16,14 +16,16 @@ export interface ChapterRun { chapter: Chapter; onDone: (win: boolean) => void; 
 /** What a battle against the AI is: a test battle (map only), a daily mission, or a campaign chapter. */
 export type BattleMode = { kind: 'test' } | { kind: 'mission'; mission: Mission } | { kind: 'chapter'; run: ChapterRun };
 
+/** The end screen's line when a battle pays nothing, by kind. */
+const UNPAID: Record<BattleMode['kind'], (won: boolean) => string> = {
+  test: () => 'Battaglia di prova: niente XP né oro. Per quelli ci sono le missioni giornaliere.',
+  mission: won => won ? 'Missione già vinta oggi: niente ricompensa. Torna domani.' : 'Missione fallita: niente ricompensa. Puoi riprovare.',
+  chapter: won => won ? 'Capitolo già vinto: niente ricompensa questa volta.' : 'La storia si ferma qui. Riprova quando vuoi.',
+};
+
 /** The end screen's lines for a replayed battle. */
 export function rewardLines(r: BattleResult, mode: BattleMode['kind']): ResultLine[] {
-  if (mode === 'chapter' && !r.paid) return [note(r.won ? 'Capitolo già vinto: niente ricompensa questa volta.' : 'La storia si ferma qui. Riprova quando vuoi.')];
-  if (!r.paid) return [note(
-    mode === 'test' ? 'Battaglia di prova: niente XP né oro. Per quelli ci sono le missioni giornaliere.'
-      : r.won ? 'Missione già vinta oggi: niente ricompensa. Torna domani.'
-      : 'Missione fallita: niente ricompensa. Puoi riprovare.',
-  )];
+  if (!r.paid) return [note(UNPAID[mode](r.won))];
   const lines: ResultLine[] = r.report.map(x => x.to > x.from
     ? { kind: 'level', text: `${x.name}, ${CLASSES[x.classId].name}: +${x.gained} XP, livello ${x.to}!` }
     : note(`${x.name}, ${CLASSES[x.classId].name}: +${x.gained} XP`));
@@ -32,18 +34,25 @@ export function rewardLines(r: BattleResult, mode: BattleMode['kind']): ResultLi
   return lines;
 }
 
+/** What depends on the kind of battle, worked out once: the enemies, what the server is asked for, the chapter run and the music. */
+function setup(mode: BattleMode, roster: RosterUnit[], map: MapData) {
+  switch (mode.kind) {
+    case 'chapter': return { enemies: missionUnits(mode.run.chapter.enemies), target: { chapterId: mode.run.chapter.id }, run: mode.run, trackId: mode.run.trackId };
+    case 'mission': return { enemies: missionUnits(mode.mission.enemies), target: { missionId: mode.mission.id }, run: undefined, trackId: mode.mission.trackId };
+    case 'test': return { enemies: testEnemies(roster, map), target: { mapId: map.id }, run: undefined, trackId: undefined };
+  }
+}
+
 /** Deploy roster units on the map, then fight the AI. Test battles never pay; missions and chapters pay on their first win. */
 export function startBattle(roster: RosterUnit[], map: MapData, mode: BattleMode) {
   const errors = validateMap(map);
   if (errors.length) throw new Error(`map invalid: ${errors.join('; ')}`);
-  const run = mode.kind === 'chapter' ? mode.run : undefined, ch = run?.chapter;
-  const enemies = mode.kind === 'chapter' ? missionUnits(mode.run.chapter.enemies) : mode.kind === 'mission' ? missionUnits(mode.mission.enemies) : testEnemies(roster, map);
-  const target = mode.kind === 'chapter' ? { chapterId: mode.run.chapter.id } : mode.kind === 'mission' ? { missionId: mode.mission.id } : { mapId: map.id };
+  const { enemies, target, run, trackId } = setup(mode, roster, map), ch = run?.chapter;
   const rehearsal = !!run?.rehearsal;
   // a rehearsal goes back to where the admin left the draft
   const back = rehearsal ? () => { leaveScreen(); run!.onDone(false); } : () => toMenu();
 
-  music('battle', mode.kind === 'mission' ? mode.mission.trackId : run?.trackId);
+  music('battle', trackId);
   // the prologue is played on the brothers' monitor
   document.getElementById('game')!.classList.toggle('crt', !!ch?.crt);
 

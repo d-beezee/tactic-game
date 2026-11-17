@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { campaignErrors, MAX_MISSION_GOLD, parseChapter, parseMap, parseMissionEnemies, parseRecruit, type User } from '@tactics/core';
+import { campaignErrors, LIMITS, MAX_MISSION_GOLD, parseChapter, parseMap, parseMissionEnemies, parseRecruit, type User } from '@tactics/core';
 import type { Context, MiddlewareHandler } from 'hono';
 import type pg from 'pg';
 import { tx } from '../db';
-import { body, HttpError, isUuid, type App, type Env } from '../http';
+import { body, HttpError, isUuid, nameField, sqlRow, type App, type Env } from '../http';
 import { BUILTIN_MAP, findMap, listChapters, listMaps, listMissions, listMusic, trackId } from '../queries';
 
-const MAX_TRACK_CODE = 20_000;
 const MUSIC_SLOTS = ['menu', 'battle'];
 
 /** Admin only; checked on every request so a removed admin loses access at once. */
@@ -39,8 +38,7 @@ export function adminRoutes(app: App, pool: pg.Pool) {
     const id = c.req.param('id');
     if (!map || map.id !== id) throw new HttpError(400, 'Mappa non valida');
     if (!/^[\w-]{1,64}$/.test(id) || id === BUILTIN_MAP.id) throw new HttpError(400, 'Id della mappa non valido');
-    map.name = map.name.trim();
-    if (!map.name || map.name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
+    map.name = nameField(map.name);
     await pool.query('INSERT INTO maps (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = now()', [id, JSON.stringify(map)]);
     return c.json(await listMaps(pool));
   });
@@ -54,28 +52,30 @@ export function adminRoutes(app: App, pool: pg.Pool) {
     return c.json(await listMaps(pool));
   });
 
+  /** The mission's columns, checked. */
   const missionBody = async (c: Context) => {
     const b = await body(c);
-    const name = typeof b.name === 'string' ? b.name.trim() : '';
-    if (!name || name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
+    const name = nameField(b.name);
     if (!Number.isInteger(b.gold) || b.gold < 0 || b.gold > MAX_MISSION_GOLD) throw new HttpError(400, `L'oro deve essere un intero tra 0 e ${MAX_MISSION_GOLD}`);
     const map = await findMap(pool, b.mapId);
     if (!map) throw new HttpError(400, 'Mappa non trovata');
     const enemies = parseMissionEnemies(map, b.enemies);
     const recruit = parseRecruit(b.recruit);
-    return [name, b.mapId, b.gold, JSON.stringify(enemies), recruit && JSON.stringify(recruit), await trackId(pool, b.trackId)];
+    return { name, map_id: b.mapId, gold: b.gold, enemies: JSON.stringify(enemies), recruit: recruit && JSON.stringify(recruit), track_id: await trackId(pool, b.trackId) };
   };
 
   app.post('/api/admin/missions', async c => {
-    await pool.query('INSERT INTO missions (name, map_id, gold, enemies, recruit, track_id) VALUES ($1, $2, $3, $4, $5, $6)', await missionBody(c));
+    const m = sqlRow(await missionBody(c), 1);
+    await pool.query(`INSERT INTO missions (${m.cols}) VALUES (${m.params})`, m.values);
     return c.json(await listMissions(pool, c.get('userId')));
   });
 
   // today's wins stay: a player who already won it does not get paid again for the edited mission
   app.put('/api/admin/missions/:id', async c => {
-    const m = await missionBody(c), id = c.req.param('id');
-    const { rowCount } = isUuid(id) ? await pool.query(
-      'UPDATE missions SET name = $2, map_id = $3, gold = $4, enemies = $5, recruit = $6, track_id = $7 WHERE id = $1', [id, ...m]) : { rowCount: 0 };
+    const id = c.req.param('id');
+    if (!isUuid(id)) throw new HttpError(404, 'Missione non trovata');
+    const m = sqlRow(await missionBody(c), 2);
+    const { rowCount } = await pool.query(`UPDATE missions SET ${m.set} WHERE id = $1`, [id, ...m.values]);
     if (!rowCount) throw new HttpError(404, 'Missione non trovata');
     return c.json(await listMissions(pool, c.get('userId')));
   });
@@ -102,18 +102,20 @@ export function adminRoutes(app: App, pool: pg.Pool) {
     if (!map || b.mapId === BUILTIN_MAP.id) throw new HttpError(400, 'Mappa non trovata');
     return { mapId: b.mapId as string, ch: parseChapter(map, b) };
   };
-  const chapterValues = (mapId: string, ch: ReturnType<typeof parseChapter>, unlockId: string) => [
-    ch.label, ch.title, ch.blurb, mapId, ch.gold, JSON.stringify(ch.enemies), JSON.stringify(ch.goal), JSON.stringify(ch.required),
-    ch.unlock && JSON.stringify({ id: unlockId, ...ch.unlock }), ch.crt, JSON.stringify(ch.before), JSON.stringify(ch.after)];
+  /** A chapter's columns, placeholders from $2 ($1 is its id). */
+  const chapterRow = (mapId: string, ch: ReturnType<typeof parseChapter>, unlockId: string) => sqlRow({
+    label: ch.label, title: ch.title, blurb: ch.blurb, map_id: mapId, gold: ch.gold, enemies: JSON.stringify(ch.enemies), goal: JSON.stringify(ch.goal),
+    required: JSON.stringify(ch.required), unlock: ch.unlock && JSON.stringify({ id: unlockId, ...ch.unlock }), crt: ch.crt,
+    before: JSON.stringify(ch.before), after: JSON.stringify(ch.after),
+  }, 2);
 
   app.post('/api/admin/chapters', async c => {
     const { mapId, ch } = await chapterBody(c);
     return c.json(await campaignChange(async db => {
-      const id = randomUUID();
+      const id = randomUUID(), row = chapterRow(mapId, ch, `u-${id}`);
       await db.query(
-        `INSERT INTO chapters (id, position, label, title, blurb, map_id, gold, enemies, goal, required, unlock, crt, before, after)
-         VALUES ($1, (SELECT coalesce(max(position) + 1, 0) FROM chapters), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [id, ...chapterValues(mapId, ch, `u-${id}`)]);
+        `INSERT INTO chapters (id, position, ${row.cols}) VALUES ($1, (SELECT coalesce(max(position) + 1, 0) FROM chapters), ${row.params})`,
+        [id, ...row.values]);
     }));
   });
 
@@ -123,9 +125,8 @@ export function adminRoutes(app: App, pool: pg.Pool) {
     return c.json(await campaignChange(async db => {
       const { rows: [old] } = await db.query('SELECT unlock FROM chapters WHERE id = $1', [id]);
       if (!old) throw new HttpError(404, 'Capitolo non trovato');
-      await db.query(
-        `UPDATE chapters SET label = $2, title = $3, blurb = $4, map_id = $5, gold = $6, enemies = $7, goal = $8, required = $9, unlock = $10, crt = $11, before = $12, after = $13
-         WHERE id = $1`, [id, ...chapterValues(mapId, ch, old.unlock?.id ?? `u-${id}`)]);
+      const row = chapterRow(mapId, ch, old.unlock?.id ?? `u-${id}`);
+      await db.query(`UPDATE chapters SET ${row.set} WHERE id = $1`, [id, ...row.values]);
     }));
   });
 
@@ -149,9 +150,8 @@ export function adminRoutes(app: App, pool: pg.Pool) {
   // the code runs in every player's browser: only admins can save it
   const trackBody = async (c: Context) => {
     const b = await body(c);
-    const name = typeof b.name === 'string' ? b.name.trim() : '';
-    if (!name || name.length > 60) throw new HttpError(400, 'Il nome deve avere tra 1 e 60 caratteri');
-    if (typeof b.code !== 'string' || !b.code.trim() || b.code.length > MAX_TRACK_CODE) throw new HttpError(400, `Il codice deve avere tra 1 e ${MAX_TRACK_CODE} caratteri`);
+    const name = nameField(b.name);
+    if (typeof b.code !== 'string' || !b.code.trim() || b.code.length > LIMITS.trackCode) throw new HttpError(400, `Il codice deve avere tra 1 e ${LIMITS.trackCode} caratteri`);
     return { name, code: b.code };
   };
 
@@ -162,8 +162,10 @@ export function adminRoutes(app: App, pool: pg.Pool) {
   });
 
   app.put('/api/admin/tracks/:id', async c => {
-    const t = await trackBody(c), id = c.req.param('id');
-    const { rowCount } = isUuid(id) ? await pool.query('UPDATE tracks SET name = $2, code = $3 WHERE id = $1', [id, t.name, t.code]) : { rowCount: 0 };
+    const id = c.req.param('id');
+    if (!isUuid(id)) throw new HttpError(404, 'Musica non trovata');
+    const t = await trackBody(c);
+    const { rowCount } = await pool.query('UPDATE tracks SET name = $2, code = $3 WHERE id = $1', [id, t.name, t.code]);
     if (!rowCount) throw new HttpError(404, 'Musica non trovata');
     return c.json(await listMusic(pool));
   });

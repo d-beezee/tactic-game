@@ -12,9 +12,9 @@ export interface RaceDef {
   meta?: boolean;
 }
 
-export const DEFAULT_RACE = 'human';
+export const DEFAULT_RACE: RaceId = 'human';
 
-export const RACES: Record<string, RaceDef> = {
+const RACE_DEFS = {
   human: {
     id: 'human', name: 'Umano', stats: {},
     trait: { name: 'Versatili', description: '+10% XP di classe', xpPct: 10 },
@@ -44,7 +44,10 @@ export const RACES: Record<string, RaceDef> = {
     trait: { name: 'Salto di frame', description: 'Teletrasporto a 1–3 caselle, una volta per battaglia' },
     actions: [{ id: 'frame-skip', name: 'Salto di frame', effect: 'teleport', stat: 'atk', power: 0, minRange: 1, maxRange: 3, ranged: true, targets: 'cell', uses: 1 }],
   },
-};
+} satisfies Record<string, RaceDef>;
+/** Id of a race defined in code. Ids from the network or the DB stay plain strings until checked against RACES. */
+export type RaceId = keyof typeof RACE_DEFS;
+export const RACES: Record<string, RaceDef> = RACE_DEFS;
 
 /** Races that can take a class: its own list, narrowed by the classes it requires. */
 export function allowedRaces(classId: string): string[] {

@@ -196,7 +196,7 @@ describe('progression', () => {
   });
 });
 
-import { buyItem, newPlayer, PlayerError, updateUnit, START_GOLD } from '../src';
+import { buyItem, kickUnit, newPlayer, PlayerError, updateUnit, START_GOLD } from '../src';
 describe('player', () => {
   it('buying costs gold and needs enough of it', () => {
     const p = buyItem(newPlayer(), 'keen-blade');
@@ -222,6 +222,16 @@ describe('player', () => {
     expect(() => updateUnit(p, 'r1', { classId: 'constructor' })).toThrow(PlayerError);
     expect(() => updateUnit(p, 'r1', { passive: 'warrior' })).toThrow(PlayerError);
     expect(updateUnit(p, 'r1', { classId: 'archer' }).roster[0].classId).toBe('archer');
+  });
+
+  it('kicking keeps campaign units and at least one unit', () => {
+    const p = newPlayer();
+    expect(() => kickUnit(p, 'nobody')).toThrow(PlayerError);
+    expect(() => kickUnit(p, 'r1', ['r1'])).toThrow(PlayerError);
+    let q = p;
+    for (const u of p.roster.slice(1)) q = kickUnit(q, u.id);
+    expect(q.roster.map(u => u.id)).toEqual([p.roster[0].id]);
+    expect(() => kickUnit(q, p.roster[0].id)).toThrow(PlayerError);
   });
 });
 
@@ -300,7 +310,10 @@ describe('test battle on the server', () => {
   });
 });
 
-import { CAMPAIGN_SEED as CAMPAIGN, campaignErrors, chapterOpen, chapterUnits, parseChapter } from '../src';
+import { campaignErrors, chapterOpen, chapterUnits, parseChapter, type Chapter } from '../src';
+// the chapters the server seeds a new database with
+import seed from '../../../apps/server/src/migrations/011-chapters.json';
+const CAMPAIGN = seed as unknown as Chapter[];
 describe('battle goals', () => {
   const at = (id: string, team: 'A' | 'B', classId: string, x: number, hp?: number) => {
     const u = createUnit(id, id, team, classId, { x, y: 0 }, 'E');

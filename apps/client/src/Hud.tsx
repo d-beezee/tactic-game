@@ -1,10 +1,11 @@
 // The battle HUD over the canvas. It only shows hudStore: the controller and the deploy phase write it through the `hud` facade.
-import { CLASSES, RACES, STATUSES, unitById, type BattleState, type Side, type Unit } from '@tactics/core';
+import { CLASSES, RACES, STATUSES, unitById, type BattleState, type Unit } from '@tactics/core';
 import { Fragment, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { hudStore, ICONS, isBtn, type Btn, type Forecast as ForecastData, type Look } from './hudStore';
 import { play } from './sfx';
 import { reducedMotion } from './theme';
+import { heightText, sideText } from './ui';
 
 const s = hudStore.state;
 
@@ -82,13 +83,11 @@ function CardBody({ u }: { u: Unit }) {
   );
 }
 
-const SIDE_TEXT: Record<Side, string> = { front: 'Di fronte', flank: 'Di fianco ×1,25', back: 'Alle spalle ×1,5' };
-
 function Forecast({ f }: { f: ForecastData | null }) {
   if (!f) return <div id="forecast" hidden />;
   const rows: [string, string][] = [...(f.rows ?? [])];
-  if (!f.heal && f.side) rows.push(['Lato', SIDE_TEXT[f.side]]);
-  if (!f.heal && f.dh) rows.push([f.dh > 0 ? `Più in alto di ${f.dh}` : `Più in basso di ${-f.dh}`, `${f.dh > 0 ? '+' : ''}${Math.max(-4, Math.min(4, f.dh)) * 5}%`]);
+  if (!f.heal && f.side) rows.push(['Lato', sideText(f.side)]);
+  if (!f.heal && f.dh) rows.push([f.dh > 0 ? `Più in alto di ${f.dh}` : `Più in basso di ${-f.dh}`, heightText(f.dh)]);
   const after = f.amount !== undefined && f.hp !== undefined && f.maxHp !== undefined
     ? f.heal ? Math.min(f.maxHp, f.hp + f.amount) : Math.max(0, f.hp - f.amount) : null;
   return (

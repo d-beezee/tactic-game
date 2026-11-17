@@ -66,13 +66,15 @@ export function pvpRoutes(app: App, pool: pg.Pool) {
 
   /** Loads the caller's match with a row lock and their team, or throws 404. */
   const lockMatch = async (db: pg.PoolClient, id: string, userId: string) => {
-    const { rows: [m] } = isUuid(id) ? await db.query('SELECT * FROM pvp_matches WHERE id = $1 AND $2 IN (player_a, player_b) FOR UPDATE', [id, userId]) : { rows: [] };
+    if (!isUuid(id)) throw new HttpError(404, 'Partita non trovata');
+    const { rows: [m] } = await db.query('SELECT * FROM pvp_matches WHERE id = $1 AND $2 IN (player_a, player_b) FOR UPDATE', [id, userId]);
     if (!m) throw new HttpError(404, 'Partita non trovata');
     return { m, team: (m.player_a === userId ? 'A' : 'B') as Team };
   };
 
-  // poll: marks the caller as present, ends the match if the other player vanished, returns what changed since action `from`
-  app.get('/api/pvp/:id', async c => {
+  // poll: marks the caller as present, ends the match if the other player vanished, returns what changed since action `from`.
+  // A POST, not a GET: it writes.
+  app.post('/api/pvp/:id/poll', async c => {
     const userId = c.get('userId');
     const from = Math.max(0, Number(c.req.query('from')) || 0);
     return c.json<PvpState>(await tx(pool, async db => {
