@@ -6,7 +6,7 @@ import { splash } from './splash';
 void splash();
 
 const go: Parameters<typeof showMenu>[0] = {
-  testBattle: async (roster, map, mission) => (await import('./battle')).startTestBattle(roster, map, mission),
+  battle: async (roster, map, mission) => (await import('./battle')).startBattle(roster, map, mission ? { kind: 'mission', mission } : { kind: 'test' }),
   campaign: async (roster, chapter) => (await import('./campaign')).startChapter(roster, chapter),
   pvp: async (roster, id, state) => (await import('./pvp')).startPvp(roster, id, state),
   editor: async () => (await import('./editor')).startEditor(),

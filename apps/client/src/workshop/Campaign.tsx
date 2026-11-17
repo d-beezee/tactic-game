@@ -2,12 +2,13 @@ import {
   CLASSES, DEFAULT_RACE, DEFAULT_ROSTER, FXS, MAX_CLASS_LEVEL, RACES, SCENES, allowedRaces, classLevel, xpToReach,
   type Chapter, type Fx, type Goal, type Line, type MapData, type RosterUnit,
 } from '@tactics/core';
+import { useLayoutEffect } from 'react';
 import { api } from '../api';
 import { allMaps, BUILTIN_MAPS } from '../maps';
 import { raceName } from '../ui';
 import { EnemyEditor } from './EnemyEditor';
 import { Btn, Check, Confirm, confirmFirst, EditHead, Field, Frame, ListPane, MasterDetail, Num, Row, SaveBar, Select, TabBar, Text, UNSAVED } from './parts';
-import { baseClassesOf, clone, defaultEnemies, dirty, draw, edit, mapName, matches, mutate, replace, touch, ws, type ChapterDraft, type Edit } from './state';
+import { ctx, baseClassesOf, clone, defaultEnemies, dirty, edit, mapName, matches, mutate, replace, ws, type ChapterDraft, type Edit } from './state';
 
 const GOAL_NAMES: Record<Goal['type'], string> = { rout: 'Sconfiggi tutti', survive: 'Sopravvivi', reach: 'Raggiungi le caselle', boss: 'Sconfiggi il boss' };
 const GOAL_HINTS: Record<Goal['type'], string> = { rout: 'vince chi resta in piedi', survive: 'resisti per un numero di round', reach: 'porta un\'unità sulle caselle', boss: 'abbatti un nemico preciso' };
@@ -32,26 +33,28 @@ const goalOf = (d: ChapterDraft): Goal => d.goalType === 'survive' ? { type: 'su
 
 export function Campaign() {
   const maps = allMaps().filter(m => !BUILTIN_MAPS.some(b => b.id === m.id));
+  // the open draft goes away with its chapter or its map; a blank one takes its place, before the first paint
+  const c = ws.cEdit?.d;
+  const stale = !!maps.length && (!c || (!!c.id && !ws.chapters.some(x => x.id === c.id)) || !maps.some(m => m.id === c.mapId));
+  useLayoutEffect(() => { if (stale) ws.cEdit = edit(chapterDraft(null, maps[0])); });
+  if (stale) return null;
   if (!maps.length) return (
     <Frame title="Cronache di Valdombra">
       <div className="ws-empty">
         <div className="ws-empty-mark" aria-hidden="true" />
         <h3>Prima serve una mappa</h3>
         <p>Ogni capitolo si gioca su una mappa salvata. La mappa dimostrativa non si può usare nella campagna.</p>
-        <Btn label="Apri l'editor mappe" cls="primary" onClick={ws.ctx.mapEditor} />
+        <Btn label="Apri l'editor mappe" cls="primary" onClick={ctx.mapEditor} />
       </div>
     </Frame>
   );
-  // the open draft goes away with its chapter or its map
-  if (ws.cEdit?.d.id && !ws.chapters.some(c => c.id === ws.cEdit!.d.id)) ws.cEdit = null;
-  if (ws.cEdit && !maps.some(m => m.id === ws.cEdit!.d.mapId)) ws.cEdit = null;
-  const e = ws.cEdit ??= edit(chapterDraft(null, maps[0]));
+  const e = ws.cEdit!;
   const d = e.d, map = maps.find(m => m.id === d.mapId)!;
   const chapters = ws.chapters;
   const at = d.id ? chapters.findIndex(c => c.id === d.id) : chapters.length;
   const ch = chapters[at];
   /** Opens a draft in the editor. */
-  const open = (next: Edit<ChapterDraft> = e) => { ws.cEdit = next; ws.open = true; draw(); };
+  const open = (next: Edit<ChapterDraft> = e) => { ws.cEdit = next; ws.open = true; };
 
   const save = () => {
     const before = chapters;
@@ -65,31 +68,32 @@ export function Campaign() {
       ws.cEdit = saved ? edit(chapterDraft(saved, maps.find(m => m.id === saved.mapId) ?? maps[0])) : null;
     });
   };
-  const rehearse = () => ws.ctx.rehearse({
+  // a copy: the battle must not write into the draft
+  const rehearse = () => ctx.rehearse(clone({
     id: 'prova', mapId: d.mapId, map, label: d.label, title: d.title, blurb: d.blurb, gold: 0, crt: d.crt, enemies: d.enemies, goal: goalOf(d),
     // a draft may ask for allies this account has not unlocked yet
-    required: d.required.filter(id => ws.ctx.player.roster.some(u => u.id === id)), unlock: null, before: d.before, after: d.after,
-  }, null);
+    required: d.required.filter(id => ctx.player.roster.some(u => u.id === id)), unlock: null, before: d.before, after: d.after,
+  }), null);
   const move = (dir: -1 | 1) => void mutate(api.moveChapter(d.id!, dir), l => { ws.chapters = l; }, false);
 
   const story = () => (
     <>
       <div className="ws-fields">
-        <Field label="Etichetta"><Text value={d.label} set={v => { d.label = v; touch(); }} maxLength={30} placeholder="es. Capitolo 4" /></Field>
-        <Field label="Titolo"><Text value={d.title} set={v => { d.title = v; touch(); }} maxLength={60} /></Field>
-        <Field label="Descrizione" wide help="Una riga, sotto il titolo nella lista dei capitoli."><Text value={d.blurb} set={v => { d.blurb = v; touch(); }} maxLength={160} /></Field>
+        <Field label="Etichetta"><Text value={d.label} set={v => { d.label = v; }} maxLength={30} placeholder="es. Capitolo 4" /></Field>
+        <Field label="Titolo"><Text value={d.title} set={v => { d.title = v; }} maxLength={60} /></Field>
+        <Field label="Descrizione" wide help="Una riga, sotto il titolo nella lista dei capitoli."><Text value={d.blurb} set={v => { d.blurb = v; }} maxLength={160} /></Field>
       </div>
-      <Check label="La battaglia si gioca dentro il monitor della cameretta" on={!!d.crt} set={v => { d.crt = v; touch(); }} />
+      <Check label="La battaglia si gioca dentro il monitor della cameretta" on={!!d.crt} set={v => { d.crt = v; }} />
     </>
   );
   const battle = () => (
     <>
       <div className="ws-fields">
         <Field label="Mappa" help="Cambiare mappa rimette i nemici sulle partenze e svuota le caselle obiettivo.">
-          <Select options={maps.map(m => [m.id, m.name] as [string, string])} value={d.mapId} set={v => { d.mapId = v; d.enemies = defaultEnemies(maps.find(m => m.id === v)!); d.cells = []; draw(); }} />
+          <Select options={maps.map(m => [m.id, m.name] as [string, string])} value={d.mapId} set={v => { d.mapId = v; d.enemies = defaultEnemies(maps.find(m => m.id === v)!); d.cells = []; }} />
         </Field>
       </div>
-      <EnemyEditor d={d} map={map} onChange={() => { if (d.boss >= d.enemies.length) d.boss = 0; touch(); }} />
+      <EnemyEditor d={d} map={map} onChange={() => { if (d.boss >= d.enemies.length) d.boss = 0; }} />
     </>
   );
   // four cards, because each goal changes the fields below
@@ -97,13 +101,13 @@ export function Campaign() {
     <>
       <div className="ws-cards" role="radiogroup" aria-label="Obiettivo">
         {(Object.keys(GOAL_NAMES) as Goal['type'][]).map(t => (
-          <button key={t} type="button" role="radio" aria-checked={t === d.goalType} className={`ws-card${t === d.goalType ? ' on' : ''}`} onClick={() => { d.goalType = t; draw(); }}>
+          <button key={t} type="button" role="radio" aria-checked={t === d.goalType} className={`ws-card${t === d.goalType ? ' on' : ''}`} onClick={() => { d.goalType = t; }}>
             <b>{GOAL_NAMES[t]}</b><small>{GOAL_HINTS[t]}</small>
           </button>
         ))}
       </div>
       {d.goalType === 'survive' && (
-        <div className="ws-fields"><Field label="Durata" unit="round"><Num value={d.rounds} set={v => { d.rounds = v; touch(); }} min={1} max={30} /></Field></div>
+        <div className="ws-fields"><Field label="Durata" unit="round"><Num value={d.rounds} set={v => { d.rounds = v; }} min={1} max={30} /></Field></div>
       )}
       {d.goalType === 'boss' && (
         <div className="ws-fields">
@@ -112,13 +116,13 @@ export function Campaign() {
               <Select
                 options={d.enemies.map((x, i) => [String(i), `${x.name ?? `${raceName(x.raceId)} ${CLASSES[x.classId].name}`}, livello ${x.level} (${x.pos.x + 1},${x.pos.y + 1})`] as [string, string])}
                 value={String(Math.min(d.boss, d.enemies.length - 1))}
-                set={v => { d.boss = Number(v); touch(); }}
+                set={v => { d.boss = Number(v); }}
               />
             </Field>
           ) : <p className="hint">Piazza almeno un nemico nella scheda Battaglia.</p>}
         </div>
       )}
-      {d.goalType === 'reach' && <EnemyEditor d={d} map={map} goal={d.cells} onChange={touch} />}
+      {d.goalType === 'reach' && <EnemyEditor d={d} map={map} goal={d.cells} />}
     </>
   );
   const squad = () => {
@@ -129,26 +133,29 @@ export function Campaign() {
     const resetXp = () => { un.xp = { [un.classId]: xpToReach(d.unlockLevel) }; };
     // the class follows the race; a class the race can take but not start in stays in the list
     const base = baseClassesOf(race);
-    if (!base.some(c => c.id === un.classId) && !allowedRaces(un.classId).includes(race)) { un.classId = base[0].id; resetXp(); }
+    const setRace = (v: string) => {
+      un.raceId = v;
+      if (!baseClassesOf(v).some(c => c.id === un.classId) && !allowedRaces(un.classId).includes(v)) { un.classId = baseClassesOf(v)[0].id; resetXp(); }
+    };
     const classes = base.some(c => c.id === un.classId) ? base : [CLASSES[un.classId], ...base];
     return (
       <>
         <fieldset className="ws-set">
           <legend>Devono combattere</legend>
           {pool.map(u => (
-            <Check key={u.id} label={u.name} on={d.required.includes(u.id)} set={v => { d.required = v ? [...d.required, u.id] : d.required.filter(id => id !== u.id); touch(); }} />
+            <Check key={u.id} label={u.name} on={d.required.includes(u.id)} set={v => { d.required = v ? [...d.required, u.id] : d.required.filter(id => id !== u.id); }} />
           ))}
         </fieldset>
         <div className="ws-fields">
-          <Field label="Premio alla prima vittoria" unit="oro" help="Più XP. Le vittorie dopo la prima non pagano."><Num value={d.gold} set={v => { d.gold = v; touch(); }} min={0} max={10000} /></Field>
+          <Field label="Premio alla prima vittoria" unit="oro" help="Più XP. Le vittorie dopo la prima non pagano."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={10000} /></Field>
         </div>
-        <Check label="Alla prima vittoria si unisce un alleato" on={d.unlockOn} set={v => { d.unlockOn = v; draw(); }} />
+        <Check label="Alla prima vittoria si unisce un alleato" on={d.unlockOn} set={v => { d.unlockOn = v; }} />
         {d.unlockOn && (
           <div className="ws-fields">
-            <Field label="Nome dell'alleato"><Text value={un.name} set={v => { un.name = v; touch(); }} maxLength={20} /></Field>
-            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={race} set={v => { un.raceId = v; touch(); }} /></Field>
-            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={un.classId} set={v => { un.classId = v; resetXp(); touch(); }} /></Field>
-            <Field label="Livello"><Num value={d.unlockLevel} set={v => { d.unlockLevel = v; resetXp(); touch(); }} min={1} max={MAX_CLASS_LEVEL} /></Field>
+            <Field label="Nome dell'alleato"><Text value={un.name} set={v => { un.name = v; }} maxLength={20} /></Field>
+            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={race} set={setRace} /></Field>
+            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={un.classId} set={v => { un.classId = v; resetXp(); }} /></Field>
+            <Field label="Livello"><Num value={d.unlockLevel} set={v => { d.unlockLevel = v; resetXp(); }} min={1} max={MAX_CLASS_LEVEL} /></Field>
           </div>
         )}
       </>
@@ -211,7 +218,7 @@ export function Campaign() {
 
 /** A cutscene as a list of closed lines; the open one shows its fields and a preview of the dialogue box. `k` names the cutscene. */
 function Lines({ lines, k, title }: { lines: Line[]; k: string; title: string }) {
-  const show = (id: string) => { ws.openLine = id; draw(); };
+  const show = (id: string) => { ws.openLine = id; };
   return (
     <fieldset className="ws-set ws-lines">
       <legend>{title} · {lines.length === 1 ? '1 battuta' : `${lines.length} battute`}</legend>
@@ -223,28 +230,28 @@ function Lines({ lines, k, title }: { lines: Line[]; k: string; title: string })
             <span>{l.text || 'Battuta vuota'}</span>
           </button>
         );
-        const move = (to: number) => { [lines[i], lines[to]] = [lines[to], lines[i]]; ws.openLine = `${k}:${to}`; touch(); };
+        const move = (to: number) => { [lines[i], lines[to]] = [lines[to], lines[i]]; ws.openLine = `${k}:${to}`; };
         return (
           <div key={i} className="ws-line open">
             <div className="ws-fields">
-              <Field label="Scena"><Select options={SCENES.map(s => [s, SCENE_NAMES[s]] as [Line['scene'], string])} value={l.scene} set={v => { l.scene = v; touch(); }} /></Field>
-              <Field label="Chi parla"><Text value={l.who ?? ''} set={v => { if (v.trim()) l.who = v; else delete l.who; touch(); }} maxLength={20} placeholder="Narratore" /></Field>
+              <Field label="Scena"><Select options={SCENES.map(s => [s, SCENE_NAMES[s]] as [Line['scene'], string])} value={l.scene} set={v => { l.scene = v; }} /></Field>
+              <Field label="Chi parla"><Text value={l.who ?? ''} set={v => { if (v.trim()) l.who = v; else delete l.who; }} maxLength={20} placeholder="Narratore" /></Field>
               <Field label="Effetto">
-                <Select<string> options={[['', 'Nessuno'], ...FXS.map(f => [f, FX_NAMES[f]] as [string, string])]} value={l.fx ?? ''} set={v => { if (v) l.fx = v as Fx; else delete l.fx; touch(); }} />
+                <Select<string> options={[['', 'Nessuno'], ...FXS.map(f => [f, FX_NAMES[f]] as [string, string])]} value={l.fx ?? ''} set={v => { if (v) l.fx = v as Fx; else delete l.fx; }} />
               </Field>
-              <Field label="Testo" wide><textarea className="field" rows={2} maxLength={200} value={l.text} onChange={ev => { l.text = ev.target.value; touch(); }} /></Field>
+              <Field label="Testo" wide><textarea className="field" rows={2} maxLength={200} value={l.text} onChange={ev => { l.text = ev.target.value; }} /></Field>
             </div>
             <div className={`ws-story${l.who ? '' : ' narration'}`}>{l.who && <b>{l.who}</b>}<span>{l.text || '…'}</span></div>
             <div className="ws-line-actions">
               <Btn label="Sposta su" cls="ghost" onClick={() => move(i - 1)} disabled={i === 0} />
               <Btn label="Sposta giù" cls="ghost" onClick={() => move(i + 1)} disabled={i === lines.length - 1} />
-              <Btn label="Elimina battuta" cls="ghost" onClick={() => { lines.splice(i, 1); ws.openLine = ''; touch(); }} />
+              <Btn label="Elimina battuta" cls="ghost" onClick={() => { lines.splice(i, 1); ws.openLine = ''; }} />
               <Btn label="Chiudi" onClick={() => show('')} />
             </div>
           </div>
         );
       })}
-      <Btn label="+ Battuta" cls="ghost" onClick={() => { lines.push({ scene: lines.at(-1)?.scene ?? 'map', text: '' }); ws.openLine = `${k}:${lines.length - 1}`; touch(); }} />
+      <Btn label="+ Battuta" cls="ghost" onClick={() => { lines.push({ scene: lines.at(-1)?.scene ?? 'map', text: '' }); ws.openLine = `${k}:${lines.length - 1}`; }} />
     </fieldset>
   );
 }

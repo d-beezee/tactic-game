@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api, type Music as Library } from '../api';
 import { getLibrary, playCode, setLibrary } from '../music';
 import { Btn, Confirm, confirmFirst, EditHead, Field, Frame, ListPane, MasterDetail, Row, SaveBar, Select, Text, UNSAVED } from './parts';
-import { dirty, draw, edit, matches, mutate, replace, touch, ws, type Edit, type TrackDraft } from './state';
+import { dirty, edit, matches, mutate, replace, ws, type Edit, type TrackDraft } from './state';
 
 const slotsOf = (l: Library) => ({ menu: l.menu, battle: l.battle });
 const blankTrack = (): Edit<TrackDraft> => edit({ id: null, name: '', code: '' });
@@ -27,12 +27,12 @@ export function Music() {
   const e = ws.tEdit ??= blankTrack();
   const d = e.d;
   /** Opens a draft in the editor. */
-  const open = (next: Edit<TrackDraft> = e) => { ws.tEdit = next; ws.open = true; draw(); };
+  const open = (next: Edit<TrackDraft> = e) => { ws.tEdit = next; ws.open = true; };
   const key = d.id ?? 'draft';
   const toggle = () => {
     setProblem('');
-    if (ws.playing === key) { ws.playing = null; void playCode(null); return draw(); }
-    void playCode(d.code).then(() => { ws.playing = key; draw(); }, err => setProblem(`Errore nel codice: ${(err as Error).message}`));
+    if (ws.playing === key) { ws.playing = null; void playCode(null); return; }
+    void playCode(d.code).then(() => { ws.playing = key; }, err => setProblem(`Errore nel codice: ${(err as Error).message}`));
   };
   const save = () => void mutate(d.id ? api.updateTrack(d.id, { name: d.name, code: d.code }) : api.createTrack({ name: d.name, code: d.code }), l => {
     const fresh = l.tracks.find(t => t.id === d.id) ?? l.tracks.find(t => !lib.tracks.some(o => o.id === t.id));
@@ -62,9 +62,9 @@ export function Music() {
     <Frame title="Musiche" bar actions={<Btn label="+ Nuovo brano" onClick={() => replace(e, () => open(blankTrack()))} />}>
       <section className="ws-slots">
         <div className="ws-fields">
-          <Field label="Musica del menu"><Select<string> options={choices} value={s.d.menu ?? ''} set={v => { s.d.menu = v || null; touch(); }} /></Field>
+          <Field label="Musica del menu"><Select<string> options={choices} value={s.d.menu ?? ''} set={v => { s.d.menu = v || null; }} /></Field>
           <Field label="Musica delle battaglie" help="Una missione può avere la sua: si sceglie nella missione.">
-            <Select<string> options={choices} value={s.d.battle ?? ''} set={v => { s.d.battle = v || null; touch(); }} />
+            <Select<string> options={choices} value={s.d.battle ?? ''} set={v => { s.d.battle = v || null; }} />
           </Field>
         </div>
         <SaveBar edit={s} label="Salva" onSave={saveSlots} />
@@ -78,9 +78,9 @@ export function Music() {
         </Confirm>
         <div className="ws-pane">
           <div className="ws-fields">
-            <Field label="Nome del brano" wide><Text value={d.name} set={v => { d.name = v; touch(); }} maxLength={60} /></Field>
+            <Field label="Nome del brano" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={60} /></Field>
             <Field label="Codice Strudel" wide>
-              <textarea className="field code" required maxLength={20000} spellCheck={false} value={d.code} placeholder="Incolla qui il codice da strudel.cc" onChange={ev => { d.code = ev.target.value; touch(); }} />
+              <textarea className="field code" required maxLength={20000} spellCheck={false} value={d.code} placeholder="Incolla qui il codice da strudel.cc" onChange={ev => { d.code = ev.target.value; }} />
             </Field>
           </div>
           <p className="error" role="alert" hidden={!problem}>{problem}</p>

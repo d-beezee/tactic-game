@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import { sceneGame } from './game';
 import { facingToward, testEnemies, unitFromRoster, type MapData, type RosterUnit } from '@tactics/core';
 import { BattleScene } from './BattleScene';
 
@@ -14,12 +14,6 @@ export function startBackdrop(map: MapData, roster: RosterUnit[]): () => void {
     s.enableFx();
     s.drift();
   }, w => ({ top: 40, bottom: 40, right: 0, left: w < 760 ? 0 : Math.min(520, w * 0.4) }));
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: 'backdrop',
-    transparent: true,
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-    scene: [scene],
-  });
+  const game = sceneGame(scene, 'backdrop');
   return () => game.destroy(true);
 }

@@ -1,5 +1,7 @@
 import { CLASSES, key, raceOf, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { BattleScene } from './BattleScene';
+import { Tray } from './Hud';
 import { spriteDir } from './sprites';
 import { hud } from './hud';
 import { toMenu } from './nav';
@@ -59,21 +61,16 @@ export class Deploy {
       : `Schieramento ${this.placed.length}/${this.max}: tocca o trascina un'unità sulle caselle azzurre`)
       + (must.length ? `. ${must.join(' e ')} combatte sempre` : ''));
 
-    const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id)).map(r => {
-      const item = Object.assign(document.createElement('div'), { className: `tray-item${full ? ' full' : ''}` });
-      const face = Object.assign(document.createElement('div'), { className: `medal ${this.team}` });
-      face.style.backgroundImage = `url(${this.scene.portrait(r)})`;
-      const txt = document.createElement('span');
-      txt.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('small'), { textContent: CLASSES[r.classId].name }));
-      item.append(face, txt);
-      item.onpointerdown = e => { hud.card(unitFromRoster(r, this.team, { x: 0, y: 0 }, this.facing)); this.startDrag({ kind: 'tray', r }, e); };
-      return item;
-    });
-    const trayBox = Object.assign(document.createElement('div'), { className: 'tray' });
-    trayBox.append(...(tray.length ? tray : [Object.assign(document.createElement('span'), { className: 'tray-empty', textContent: 'Tutte le unità sono in campo' })]));
+    const tray = this.roster.filter(r => !this.placed.some(u => u.id === r.id))
+      .map(r => ({ id: r.id, name: r.name, cls: CLASSES[r.classId].name, team: this.team, portrait: this.scene.portrait(r) }));
+    const grab = (id: string, e: ReactPointerEvent) => {
+      const r = this.roster.find(x => x.id === id)!;
+      hud.card(unitFromRoster(r, this.team, { x: 0, y: 0 }, this.facing));
+      this.startDrag({ kind: 'tray', r }, e.nativeEvent);
+    };
 
     hud.buttons([
-      trayBox,
+      <Tray units={tray} full={full} onGrab={grab} />,
       { label: 'Menu', icon: 'back', onClick: this.onBack },
       {
         label: this.placed.length ? 'Inizia battaglia' : 'Schiera almeno 1 unità',

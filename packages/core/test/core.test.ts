@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import demo from '../../../apps/client/src/maps/demo.json';
+import demo from '../src/maps/demo.json';
 import {
   apply, createBattle, createUnit, destinations, planTurn, reachable, rollInitiative, sideOf, validateMap,
   activeUnit, BattleError, CLASSES, rangeCells, targetsFor, type MapData,
@@ -225,12 +225,12 @@ describe('player', () => {
   });
 });
 
-import { deployTeam, deployTestBattle, missionUnits, PVP_LEVEL, parseMissionEnemies, payBattle, replayTestBattle, type BattleAction } from '../src';
+import { deployTeam, deployBattle, missionUnits, PVP_LEVEL, parseMissionEnemies, payBattle, replayBattle, type BattleAction } from '../src';
 describe('test battle on the server', () => {
   const map = demo as MapData;
   const p = newPlayer();
   const deploy = map.spawns.A.slice(0, map.maxDeploy).map((pos, i) => ({ id: p.roster[i].id, pos }));
-  const units = deployTestBattle(p.roster, map, deploy);
+  const units = deployBattle(p.roster, map, deploy);
 
   /** plays the player side with the AI too and returns only the player's actions, like the client sends them */
   const play = (seed: number) => {
@@ -249,17 +249,17 @@ describe('test battle on the server', () => {
 
   it('deploy must use own units on own spawn cells', () => {
     expect(units.filter(u => u.team === 'A').map(u => u.id)).toEqual(deploy.map(d => d.id));
-    expect(() => deployTestBattle(p.roster, map, [{ id: 'r1', pos: map.spawns.B[0] }])).toThrow(PlayerError);
-    expect(() => deployTestBattle(p.roster, map, [{ id: 'nope', pos: map.spawns.A[0] }])).toThrow(PlayerError);
-    expect(() => deployTestBattle(p.roster, map, [deploy[0], deploy[0]])).toThrow(PlayerError);
-    expect(() => deployTestBattle(p.roster, map, [])).toThrow();
-    expect(() => deployTestBattle(p.roster, map, [null])).toThrow(PlayerError);
+    expect(() => deployBattle(p.roster, map, [{ id: 'r1', pos: map.spawns.B[0] }])).toThrow(PlayerError);
+    expect(() => deployBattle(p.roster, map, [{ id: 'nope', pos: map.spawns.A[0] }])).toThrow(PlayerError);
+    expect(() => deployBattle(p.roster, map, [deploy[0], deploy[0]])).toThrow(PlayerError);
+    expect(() => deployBattle(p.roster, map, [])).toThrow();
+    expect(() => deployBattle(p.roster, map, [null])).toThrow(PlayerError);
   });
 
   it('replay of the player actions gives the same outcome and pays from it', () => {
     const { end, log } = play(7);
-    expect(replayTestBattle(map, units, 7, log).xp).toEqual(end.xp);
-    const out = payBattle(p, units, replayTestBattle(map, units, 7, log), 50);
+    expect(replayBattle(map, units, 7, log).xp).toEqual(end.xp);
+    const out = payBattle(p, units, replayBattle(map, units, 7, log), 50);
     expect(out.player.gold).toBe(START_GOLD + 50);
     expect(out.report.map(r => [r.id, r.gained])).toEqual(deploy.map(d => [d.id, Math.floor(end.xp[d.id] * 1.1)]).filter(([, xp]) => xp));
   });
@@ -270,7 +270,7 @@ describe('test battle on the server', () => {
       if (map.terrain[y][x] !== 'x' && map.terrain[y][x] !== 'w' && !map.spawns.A.some(s => s.x === x && s.y === y)) free.push({ x, y });
     const many = free.slice(0, map.maxDeploy + 2).map(pos => ({ classId: 'sage', level: 5, pos }));
     const enemies = parseMissionEnemies(map, many);
-    const units = deployTestBattle(p.roster, map, deploy, missionUnits(enemies));
+    const units = deployBattle(p.roster, map, deploy, missionUnits(enemies));
     expect(units.filter(u => u.team === 'B').map(u => [u.classId, u.level])).toEqual(many.map(() => ['sage', 5]));
     const bad = (e: unknown) => expect(() => parseMissionEnemies(map, e)).toThrow(PlayerError);
     bad([]);
@@ -292,11 +292,11 @@ describe('test battle on the server', () => {
 
   it('rejects unfinished, illegal and malformed action lists', () => {
     const { log } = play(7);
-    expect(() => replayTestBattle(map, units, 7, log.slice(0, -1))).toThrow(PlayerError);
-    expect(() => replayTestBattle(map, units, 7, [])).toThrow(PlayerError);
-    expect(() => replayTestBattle(map, units, 7, [{ type: 'move', to: null }])).toThrow(PlayerError);
-    expect(() => replayTestBattle(map, units, 7, [{ type: 'act', actionId: 'strike', target: units[3].pos }])).toThrow(PlayerError);
-    expect(() => replayTestBattle(map, units, 7, 'win')).toThrow(PlayerError);
+    expect(() => replayBattle(map, units, 7, log.slice(0, -1))).toThrow(PlayerError);
+    expect(() => replayBattle(map, units, 7, [])).toThrow(PlayerError);
+    expect(() => replayBattle(map, units, 7, [{ type: 'move', to: null }])).toThrow(PlayerError);
+    expect(() => replayBattle(map, units, 7, [{ type: 'act', actionId: 'strike', target: units[3].pos }])).toThrow(PlayerError);
+    expect(() => replayBattle(map, units, 7, 'win')).toThrow(PlayerError);
   });
 });
 

@@ -22,7 +22,7 @@ Servono Node 24, pnpm e Docker. Docker serve solo per il Postgres di sviluppo.
 ```bash
 pnpm install
 pnpm dev        # avvia Postgres (docker compose), il server su :3000 e il client (Vite)
-pnpm test       # test della logica di gioco (vitest)
+pnpm test       # test di core, client e server (vitest); quelli del server usano il Postgres di docker compose
 pnpm typecheck  # controllo dei tipi su tutti i pacchetti
 pnpm build      # typecheck + client in ./dist + server in ./dist-server/server.cjs
 pnpm start      # avvia il server di produzione (serve DATABASE_URL)
@@ -70,7 +70,9 @@ packages/core/      logica di gioco pura: nessuna dipendenza grafica, determinis
   src/roster.ts       unità del giocatore, progressione e XP
   src/items.ts        catalogo di armi e armature
   src/player.ts       stato del giocatore: oro, inventario, acquisti, equipaggiamento
-  src/testBattle.ts   battaglie contro l'IA: nemici, schieramento, replay delle azioni e ricompense
+  src/missions.ts     battaglie contro l'IA: nemici, schieramento, replay delle azioni e ricompense
+  src/api.ts          forme delle risposte HTTP, condivise da server e client
+  src/maps/           mappa dimostrativa in JSON
   src/pathfinding.ts  caselle raggiungibili (movimento, salto, ostacoli)
   src/combat.ts       gittata, danno, lato colpito
   src/initiative.ts   ordine dei turni
@@ -79,26 +81,32 @@ packages/core/      logica di gioco pura: nessuna dipendenza grafica, determinis
   test/               test vitest
 apps/server/        server Node (Hono) + Postgres
   src/main.ts         avvio: migrazioni, poi server HTTP
-  src/app.ts          API: account, sessioni, caserma, negozio, battaglie
+  src/app.ts          monta le aree dell'API nell'ordine giusto (ogni middleware protegge le route dopo di lui)
+  src/routes/         una area per file: auth, player, battles, content, admin, pvp
+  src/queries.ts      letture e scritture usate da più aree
   src/db.ts           migrazioni e transazioni
+  test/               test di integrazione (pagamenti, PvP, accessi)
 apps/client/        client Vite + Phaser 3, menu in React
   src/menu/           accesso, menu iniziale, caserma e negozio: una schermata per file
   src/workshop/       Officina (admin): campagna, missioni, musiche, utenti
   src/api.ts          chiamate al server
-  src/battle.ts       avvio della battaglia di prova
-  src/deploy.ts       schieramento con drag and drop
+  src/battle.ts       battaglie contro l'IA: prova, missione o capitolo
+  src/mountBattle.ts  scena, camera e HUD di una battaglia, condiviso con il PvP
+  src/deploy.tsx      schieramento con drag and drop
   src/editor.ts       editor mappe (admin)
   src/maps.ts         mappe di base e mappe salvate
   src/music.ts        musica di sottofondo (codice Strudel)
   src/controller.ts   flusso dei turni e input del giocatore
+  src/playEvents.ts   animazioni e suoni di ogni evento di battaglia
   src/BattleScene.ts  rendering isometrico, unità, animazioni
-  src/hud.ts          interfaccia sopra la mappa
-  src/maps/           mappe in JSON
+  src/hud.ts          facciata della HUD: il controller la chiama, lei scrive solo nello store
+  src/Hud.tsx         HUD in React sopra la mappa
+  src/store.ts        store fuori da React (HUD e Officina): si modifica sul posto e ridisegna da solo
   public/tiles/       tile del terreno
   public/units/       sprite delle unità
 ```
 
-Le regole stanno tutte in `packages/core`. Il server non le riscrive: per ogni richiesta carica il giocatore, applica una funzione pura del core (`buyItem`, `updateUnit`, `finishTestBattle`) e salva il risultato. Il client usa lo stesso codice solo per mostrare cosa è permesso.
+Le regole stanno tutte in `packages/core`. Il server non le riscrive: per ogni richiesta carica il giocatore, applica una funzione pura del core (`buyItem`, `updateUnit`, `payBattle`) e salva il risultato. Il client usa lo stesso codice solo per mostrare cosa è permesso.
 
 La battaglia è un reducer puro: `apply(state, action)` restituisce un nuovo stato oppure lancia `BattleError` se l'azione non è valida. Il server PvP usa la stessa funzione per validare le mosse. La telecamera ruota a scatti di 90° (pulsanti ⟲ ⟳ o tasti Q/E): la logica resta in coordinate di griglia, e solo `BattleScene` converte in coordinate di vista. Il seme del generatore casuale fa parte dello stato, quindi una battaglia si può rigiocare identica a partire dalle sue azioni.
 
@@ -142,14 +150,14 @@ XP e oro li decide il server, non il client.
 3. A fine battaglia il client manda le azioni a `POST /api/battles/:id/finish`. Il server rigioca la battaglia: applica le azioni del giocatore con `apply` e calcola i turni nemici con la stessa IA. Se un'azione non è valida, o se la lista finisce prima che ci sia un vincitore, rifiuta tutto.
 4. Paga solo una missione giornaliera vinta per la prima volta nella giornata: XP dallo stato finale del replay, oro dalla missione. La battaglia di prova, una missione persa o una missione già vinta oggi non danno niente. Il risultato è salvato sulla battaglia: una seconda richiesta con lo stesso id riceve la stessa risposta e non paga due volte.
 
-Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/testBattle.ts`.
+Una battaglia abbandonata non dà nulla. Il codice è in `packages/core/src/missions.ts`.
 
 ## Missioni giornaliere
 
 - **Creazione:** dal menu "Gestisci missioni" l'admin crea una missione con nome, mappa (di base o salvata), oro (da 0 a 10000), nemici e, se vuole, una musica diversa da quella delle battaglie. Può anche eliminarla. Una mappa usata da una missione non si può eliminare.
 - **Nemici:** da 1 a 12, ognuno con classe (anche avanzata), livello da 1 a 8 e casella di partenza. Si piazzano toccando le caselle di una griglia della mappa. Una casella deve essere calpestabile e non può essere una partenza del giocatore. Alla scelta della mappa la griglia propone un nemico per ogni partenza nemica. Il numero di nemici non dipende da `maxDeploy`, che limita solo il giocatore.
 - **Gioco:** dal menu "Missioni giornaliere" ogni giocatore vede tutte le missioni. Una missione vinta paga XP e l'oro indicato, una volta al giorno per giocatore. Il giorno cambia a mezzanotte, ora italiana (`Europe/Rome`). Una missione persa si può rigiocare.
-- **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/testBattle.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
+- **Dati:** tabelle `missions` (con i nemici in `enemies`) e `mission_wins` (una riga per giocatore, missione e giorno). Il controllo dei nemici (`parseMissionEnemies`) e il pagamento (`payBattle`) sono in `packages/core/src/missions.ts`. Il server ricontrolla i nemici a ogni avvio di battaglia, perché la mappa può essere cambiata dopo.
 
 ## Campagna
 

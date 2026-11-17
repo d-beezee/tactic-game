@@ -3,7 +3,7 @@ import { isWalkable, key, samePos, type MapData } from './map';
 import { PlayerError } from './player';
 import { allowedRaces, DEFAULT_RACE, RACES } from './races';
 import { DEFAULT_ROSTER, parseRoster, xpToReach, type RosterUnit } from './roster';
-import { deployTeam, MAX_MISSION_GOLD, missionUnits, parseMissionEnemies, type MissionEnemy } from './testBattle';
+import { deployTeam, MAX_MISSION_GOLD, missionUnits, parseMissionEnemies, type MissionEnemy } from './missions';
 import type { Unit } from './units';
 import prologueMap from './campaign/prologue.json';
 import crowsMap from './campaign/crows.json';

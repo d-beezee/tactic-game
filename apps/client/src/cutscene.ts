@@ -1,4 +1,5 @@
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
+import { sceneGame } from './game';
 import type { Line, MapData, Unit } from '@tactics/core';
 import { BattleScene } from './BattleScene';
 import { mountScene, type SceneHandle } from './scenes';
@@ -55,11 +56,7 @@ export function playCutscene(lines: Line[], world: { map: MapData; units: Unit[]
     } else { drawn?.h.stop(); drawn = null; }
     if (scene === 'map' && !game) {
       // the chapter's diorama, drifting, with every light effect on
-      game = new Phaser.Game({
-        type: Phaser.AUTO, parent: mapBox, transparent: true,
-        scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-        scene: [new BattleScene(world.map, world.units, s => { s.pannable = false; s.enableFx(); s.drift(); }, w => ({ top: 30, right: 0, left: 0, bottom: w < 640 ? 220 : 200 }))],
-      });
+      game = sceneGame(new BattleScene(world.map, world.units, s => { s.pannable = false; s.enableFx(); s.drift(); }, w => ({ top: 30, right: 0, left: 0, bottom: w < 640 ? 220 : 200 })), mapBox);
     }
   };
 

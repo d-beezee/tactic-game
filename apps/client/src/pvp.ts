@@ -1,12 +1,11 @@
-import Phaser from 'phaser';
 import { createBattle, type BattleAction, type RosterUnit } from '@tactics/core';
-import { api, ApiError, type PvpState } from './api';
-import { BattleScene } from './BattleScene';
+import { api, ApiError, retry, type PvpState } from './api';
 import { Controller } from './controller';
 import { Deploy } from './deploy';
-import { hud, mountRotate } from './hud';
+import { hud, note } from './hud';
+import { mountBattle } from './mountBattle';
 import { music } from './music';
-import { onLeave, ownGame, toMenu } from './nav';
+import { onLeave, toMenu } from './nav';
 
 const POLL_MS = 1000;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -22,14 +21,8 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
   onLeave(() => { over = true; });
   const back = () => { void api.pvpLeave(id).catch(() => { /* the server ends it anyway once we stop polling */ }); toMenu(); };
   music('battle');
-  hud.setTeam(team);
-  document.getElementById('hud')!.hidden = false;
 
-  const scene = new BattleScene(map, [], s => {
-    mountRotate(s);
-    s.enableFx();
-    hud.setPortraits(c => s.portrait(c));
-
+  mountBattle(map, [], s => {
     let placed: string[] = [];
     let controller: Controller | null = null;
     /** actions known here, ours and theirs: the next poll asks from this index */
@@ -52,23 +45,15 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
     let sending = Promise.resolve();
     const send = (a: BattleAction) => {
       const index = count++;
-      sending = sending.then(async () => {
-        for (let attempt = 1; !over; attempt++) {
-          try {
-            return void await api.pvpAction(id, index, a);
-          } catch (e) {
-            if (e instanceof ApiError && e.status >= 400) return fail(`Mossa rifiutata dal server: ${e.message}`);
-            await wait(Math.min(5000, 500 * attempt));
-          }
-        }
-      });
+      sending = sending.then(() => retry(() => api.pvpAction(id, index, a), { delay: n => Math.min(5000, 500 * n), refused: e => e.status >= 400, stop: () => over })
+        .then(() => {}, e => fail(`Mossa rifiutata dal server: ${(e as Error).message}`)));
     };
 
     const startBattle = (st: PvpState) => {
       for (const uid of placed) s.removeUnit(uid);
       for (const u of st.units!) s.addUnit(u);
       hud.banner('');
-      controller = new Controller(s, createBattle(map, st.units!, st.seed!), async () => ['Partita PvP: livelli a 5, niente XP né oro.'], {
+      controller = new Controller(s, createBattle(map, st.units!, st.seed!), async () => [note('Partita PvP: livelli a 5, niente XP né oro.')], {
         me: team, remote, onAction: send, onResign: back,
       });
       controller.start();
@@ -79,7 +64,7 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
       const win = st.winner === team;
       const why = st.reason === 'gone' ? (win ? 'L\'avversario si è disconnesso.' : 'Sei rimasto disconnesso troppo a lungo.')
         : win ? 'L\'avversario si è arreso.' : 'Ti sei arreso.';
-      hud.result(win, [why], () => toMenu());
+      hud.result(win, [note(why)], () => toMenu());
     };
 
     const poll = async () => {
@@ -115,13 +100,5 @@ export function startPvp(roster: RosterUnit[], id: string, first: PvpState) {
     }, team, back).start();
     hud.ribbon(team === 'A' ? 'Sei la squadra blu' : 'Sei la squadra rossa');
     void poll();
-  });
-
-  ownGame(new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: 'game',
-    transparent: true,
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-    scene: [scene],
-  }));
+  }, team);
 }

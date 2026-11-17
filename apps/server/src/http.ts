@@ -1,0 +1,17 @@
+import type { Context, Hono } from 'hono';
+import type pg from 'pg';
+
+export type Env = { Variables: { userId: string } };
+export type App = Hono<Env>;
+export type Db = pg.Pool | pg.PoolClient;
+
+/** Request the client got wrong; the message is shown to the player. */
+export class HttpError extends Error {
+  constructor(public status: 400 | 401 | 403 | 404 | 409 | 429, message: string) { super(message); }
+}
+
+export const body = (c: Context) => c.req.json().catch(() => { throw new HttpError(400, 'Richiesta non valida'); });
+
+/** JSON with sorted keys: jsonb does not keep the key order it was given. */
+export const canon = (v: unknown) => JSON.stringify(v, (_, x) => x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x);
+export const isUuid = (s: unknown): s is string => typeof s === 'string' && /^[0-9a-f-]{36}$/i.test(s);

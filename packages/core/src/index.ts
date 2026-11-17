@@ -12,5 +12,7 @@ export * from './ai';
 export * from './roster';
 export * from './items';
 export * from './player';
-export * from './testBattle';
+export * from './missions';
 export * from './campaign';
+export * from './demoMap';
+export * from './api';

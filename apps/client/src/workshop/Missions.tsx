@@ -5,7 +5,7 @@ import { getLibrary } from '../music';
 import { enemySummary } from '../ui';
 import { EnemyEditor } from './EnemyEditor';
 import { Btn, Check, Confirm, confirmFirst, EditHead, Field, Frame, ListPane, MasterDetail, Num, Row, SaveBar, Select, TabBar, Text, UNSAVED } from './parts';
-import { baseClassesOf, clone, defaultEnemies, dirty, draw, edit, mapName, matches, mutate, replace, touch, trackName, ws, type Edit, type MissionDraft } from './state';
+import { ctx, baseClassesOf, clone, defaultEnemies, dirty, edit, mapName, matches, mutate, replace, trackName, ws, type Edit, type MissionDraft } from './state';
 
 const blankMission = (m: MapData): MissionDraft => ({ id: null, name: '', mapId: m.id, gold: 50, enemies: defaultEnemies(m), trackId: null, recruit: { on: false, name: '', raceId: 'corvid', classId: 'lancer' } });
 const missionDraft = (m: Mission): MissionDraft => ({
@@ -21,7 +21,7 @@ export function Missions() {
   const e = ws.mEdit ??= edit(blankMission(maps[0]));
   const d = e.d, map = maps.find(m => m.id === d.mapId)!;
   /** Opens a draft in the editor. */
-  const open = (next: Edit<MissionDraft> = e) => { ws.mEdit = next; ws.open = true; draw(); };
+  const open = (next: Edit<MissionDraft> = e) => { ws.mEdit = next; ws.open = true; };
 
   const save = () => {
     const before = ws.missions;
@@ -32,20 +32,20 @@ export function Missions() {
       ws.mEdit = saved ? edit(missionDraft(saved)) : null;
     });
   };
-  const rehearse = () => ws.ctx.rehearse(
-    { id: 'prova', mapId: map.id, map, label: 'Prova', title: d.name || 'Missione', blurb: '', enemies: d.enemies, goal: { type: 'rout' }, required: [], gold: 0, before: [], after: [] },
+  const rehearse = () => ctx.rehearse(
+    clone({ id: 'prova', mapId: map.id, map, label: 'Prova', title: d.name || 'Missione', blurb: '', enemies: d.enemies, goal: { type: 'rout' }, required: [], gold: 0, before: [], after: [] }),
     d.trackId,
   );
 
   const data = () => (
     <div className="ws-fields">
-      <Field label="Nome della missione" wide><Text value={d.name} set={v => { d.name = v; touch(); }} maxLength={60} placeholder="es. Il ponte dei corvi" /></Field>
+      <Field label="Nome della missione" wide><Text value={d.name} set={v => { d.name = v; }} maxLength={60} placeholder="es. Il ponte dei corvi" /></Field>
       <Field label="Mappa" help="Cambiare mappa rimette i nemici sulle partenze nemiche.">
-        <Select options={maps.map(m => [m.id, m.name] as [string, string])} value={d.mapId} set={v => { d.mapId = v; d.enemies = defaultEnemies(maps.find(m => m.id === v)!); draw(); }} />
+        <Select options={maps.map(m => [m.id, m.name] as [string, string])} value={d.mapId} set={v => { d.mapId = v; d.enemies = defaultEnemies(maps.find(m => m.id === v)!); }} />
       </Field>
-      <Field label="Premio alla vittoria" unit="oro" help="Più XP, una volta al giorno."><Num value={d.gold} set={v => { d.gold = v; touch(); }} min={0} max={10000} /></Field>
+      <Field label="Premio alla vittoria" unit="oro" help="Più XP, una volta al giorno."><Num value={d.gold} set={v => { d.gold = v; }} min={0} max={10000} /></Field>
       <Field label="Musica">
-        <Select<string> options={[['', 'Quella delle battaglie'], ...getLibrary().tracks.map(t => [t.id, t.name] as [string, string])]} value={d.trackId ?? ''} set={v => { d.trackId = v || null; touch(); }} />
+        <Select<string> options={[['', 'Quella delle battaglie'], ...getLibrary().tracks.map(t => [t.id, t.name] as [string, string])]} value={d.trackId ?? ''} set={v => { d.trackId = v || null; }} />
       </Field>
     </div>
   );
@@ -56,18 +56,18 @@ export function Missions() {
     if (!classes.some(c => c.id === rc.classId)) rc.classId = classes[0].id;
     return (
       <>
-        <Check label="Alla prima vittoria si unisce una recluta" on={rc.on} set={v => { rc.on = v; draw(); }} />
+        <Check label="Alla prima vittoria si unisce una recluta" on={rc.on} set={v => { rc.on = v; }} />
         {rc.on ? (
           <div className="ws-fields">
-            <Field label="Nome della recluta"><Text value={rc.name} set={v => { rc.name = v; touch(); }} maxLength={20} /></Field>
-            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={rc.raceId} set={v => { rc.raceId = v; touch(); }} /></Field>
-            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={rc.classId} set={v => { rc.classId = v; touch(); }} /></Field>
+            <Field label="Nome della recluta"><Text value={rc.name} set={v => { rc.name = v; }} maxLength={20} /></Field>
+            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={rc.raceId} set={v => { rc.raceId = v; }} /></Field>
+            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={rc.classId} set={v => { rc.classId = v; }} /></Field>
           </div>
         ) : <p className="hint">Nessuna recluta: la missione paga solo oro e XP.</p>}
       </>
     );
   };
-  const pane = [data, () => <EnemyEditor d={d} map={map} onChange={touch} />, recruit][ws.tabs.missions]();
+  const pane = [data, () => <EnemyEditor d={d} map={map} />, recruit][ws.tabs.missions]();
 
   const list = (
     <ListPane placeholder="Cerca missione" rows={q => (

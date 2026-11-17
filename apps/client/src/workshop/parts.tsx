@@ -2,7 +2,7 @@
 import { cloneElement, useId, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { allMaps, BUILTIN_MAPS } from '../maps';
 import { getLibrary } from '../music';
-import { dirty, draw, go, ws, type Edit, type Tool } from './state';
+import { ctx, dirty, go, ws, type Edit, type Tool } from './state';
 
 export function Btn({ label, cls = '', onClick, disabled, autoFocus }: { label: string; cls?: string; onClick: () => void; disabled?: boolean; autoFocus?: boolean }) {
   return <button type="button" className={`ws-btn ${cls}`} onClick={onClick} disabled={disabled} autoFocus={autoFocus}>{label}</button>;
@@ -22,11 +22,11 @@ export function Frame({ title, actions, bar, children }: { title: string; action
         <span className="ws-grp">Contenuti</span>
         {link('campaign', 'Campagna', ws.chapters.length)}
         {link('missions', 'Missioni', ws.missions.length)}
-        <button type="button" className="ws-link" onClick={ws.ctx.mapEditor}>Mappe<small>{allMaps().length - BUILTIN_MAPS.length || ''}</small></button>
+        <button type="button" className="ws-link" onClick={ctx.mapEditor}>Mappe<small>{allMaps().length - BUILTIN_MAPS.length || ''}</small></button>
         {link('music', 'Musiche', getLibrary().tracks.length)}
         <span className="ws-grp">Persone</span>
         {link('users', 'Utenti', ws.users.length)}
-        <button type="button" className="ws-link ws-exit" onClick={ws.ctx.back}>← Torna al gioco</button>
+        <button type="button" className="ws-link ws-exit" onClick={ctx.back}>← Torna al gioco</button>
       </nav>
       <main className="ws-main">
         <p className="ws-live">{ws.tool === 'users' ? 'Gli admin possono modificare tutto e cambiare i ruoli degli altri.' : 'Le modifiche salvate valgono subito per tutti i giocatori.'}</p>
@@ -47,7 +47,7 @@ export function SaveBar({ edit, label, onSave, extra }: { edit: Edit<unknown>; l
         <div className="ws-bar ask">
           <p>Le modifiche non salvate andranno perse.</p>
           {/* the question takes the focus, on its safe answer */}
-          <Btn label="Resta qui" cls="ghost" autoFocus onClick={() => { ws.ask = null; draw(); }} />
+          <Btn label="Resta qui" cls="ghost" autoFocus onClick={() => { ws.ask = null; }} />
           <Btn label="Scarta le modifiche" cls="warn" onClick={() => { const fn = ws.ask!; ws.ask = null; fn(); }} />
         </div>
       ) : (
@@ -57,7 +57,7 @@ export function SaveBar({ edit, label, onSave, extra }: { edit: Edit<unknown>; l
             {changed ? 'Modifiche non salvate' : ws.savedAt ? `Salvato alle ${ws.savedAt}` : 'Nessuna modifica'}
           </p>
           {extra}
-          {changed && <Btn label="Annulla modifiche" cls="ghost" onClick={() => { edit.d = JSON.parse(edit.orig); draw(); }} />}
+          {changed && <Btn label="Annulla modifiche" cls="ghost" onClick={() => { edit.d = JSON.parse(edit.orig); }} />}
           <Btn label={label} cls="primary" onClick={onSave} disabled={!changed} />
         </div>
       )}
@@ -71,12 +71,12 @@ export function Confirm({ k, ok, cls, run, children }: { k: string; ok: string; 
   return (
     <div className="ws-confirm" role="group">
       <p>{children}</p>
-      <Btn label="Annulla" cls="ghost" autoFocus onClick={() => { ws.pending = ''; draw(); }} />
+      <Btn label="Annulla" cls="ghost" autoFocus onClick={() => { ws.pending = ''; }} />
       <Btn label={ok} cls={cls} onClick={() => { ws.pending = ''; run(); }} />
     </div>
   );
 }
-export const confirmFirst = (key: string) => () => { ws.pending = key; draw(); };
+export const confirmFirst = (key: string) => () => { ws.pending = key; };
 
 /** A labelled field around one control; the unit, when given, sits inside the box. */
 export function Field({ label, help, unit, wide, children }: { label: string; help?: string; unit?: string; wide?: boolean; children: ReactElement<{ id?: string }> }) {
@@ -113,7 +113,7 @@ export function TabBar({ names, which }: { names: string[]; which: 'missions' | 
   return (
     <div className="ws-tabs" role="tablist">
       {names.map((n, i) => (
-        <button key={n} type="button" role="tab" className={`ws-tab${i === ws.tabs[which] ? ' on' : ''}`} aria-selected={i === ws.tabs[which]} onClick={() => { ws.tabs[which] = i; draw(); }}>{n}</button>
+        <button key={n} type="button" role="tab" className={`ws-tab${i === ws.tabs[which] ? ' on' : ''}`} aria-selected={i === ws.tabs[which]} onClick={() => { ws.tabs[which] = i; }}>{n}</button>
       ))}
     </div>
   );
@@ -138,7 +138,7 @@ export function ListPane({ placeholder, rows }: { placeholder: string; rows: (q:
   const q = ws.queries[ws.tool] ?? '';
   return (
     <div className="ws-list">
-      <input type="search" className="field ws-search" placeholder={placeholder} aria-label={placeholder} value={q} onChange={e => { ws.queries[ws.tool] = e.target.value; draw(); }} />
+      <input type="search" className="field ws-search" placeholder={placeholder} aria-label={placeholder} value={q} onChange={e => { ws.queries[ws.tool] = e.target.value; }} />
       <div className="ws-rows">{rows(q)}</div>
     </div>
   );
@@ -151,7 +151,7 @@ export function MasterDetail({ list, children }: { list: ReactNode; children: Re
 export function EditHead({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="ws-edit-head">
-      <Btn label="← Elenco" cls="ghost ws-phone" onClick={() => { ws.open = false; draw(); }} />
+      <Btn label="← Elenco" cls="ghost ws-phone" onClick={() => { ws.open = false; }} />
       <h3>{title}</h3>
       {children}
     </div>

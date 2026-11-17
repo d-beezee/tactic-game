@@ -1,39 +1,28 @@
-import type { BattleAction, Chapter, ChapterInput, MapData, MissionEnemy, Player, Pos, Recruit, Unit, UnitChange, XpReport } from '@tactics/core';
+import type { Account, BattleAction, BattleResult, BattleStart, Chapter, ChapterInput, MapData, Mission, MissionEnemy, Music, Player, Pos, PvpState, Recruit, UnitChange, User } from '@tactics/core';
 
-export interface Account extends Player {
-  email: string;
-  /** the admin is the only one with the map editor and custom maps */
-  admin: boolean;
-}
-
-export interface User { id: string; email: string; admin: boolean; createdAt: string }
-
-/** A PvP match as the poll sees it; actions start at the `from` index asked for. */
-export interface PvpState {
-  status: 'waiting' | 'deploy' | 'battle' | 'done';
-  team: 'A' | 'B';
-  code: string | null;
-  map: MapData;
-  deployed: boolean;
-  seed: number | null;
-  units: Unit[] | null;
-  actions: BattleAction[];
-  winner: 'A' | 'B' | null;
-  /** how a done match ended: battle, resign, gone (the other player vanished) */
-  reason: 'battle' | 'resign' | 'gone' | null;
-}
-
-/** A daily mission; done = already won today by this player; trackId = its own music instead of the battle one. */
-export interface Mission { id: string; name: string; mapId: string; gold: number; enemies: MissionEnemy[]; recruit: Recruit | null; trackId: string | null; done: boolean }
-
-/** A piece of background music: Strudel code. */
-export interface Track { id: string; name: string; code: string }
-/** Saved tracks, and the one chosen for the menu and for battles (null = silence). */
-export interface Music { tracks: Track[]; menu: string | null; battle: string | null }
+export type { Account, Mission, Music, PvpState, Track, User } from '@tactics/core';
 
 export class ApiError extends Error {
   /** status 0 = the server could not be reached */
   constructor(public status: number, message: string) { super(message); }
+}
+
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Calls `fn` until it succeeds. A refusal (by default any 4xx: sending again cannot help) and the last failure are thrown.
+ * `stop` ends the retries early, resolving to undefined.
+ */
+export async function retry<T>(fn: () => Promise<T>, opts: { attempts?: number; delay: (attempt: number) => number; refused?: (e: ApiError) => boolean; stop?: () => boolean }): Promise<T | undefined> {
+  const refused = opts.refused ?? (e => e.status >= 400 && e.status < 500);
+  for (let attempt = 1; !opts.stop?.(); attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if ((e instanceof ApiError && refused(e)) || attempt >= (opts.attempts ?? Infinity)) throw e;
+      await wait(opts.delay(attempt));
+    }
+  }
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -73,10 +62,10 @@ export const api = {
   /** The server picks the seed and builds the starting units from its own copy of the roster. */
   /** A test battle names its map, a mission or a campaign chapter its id. */
   battleStart: (target: { mapId: string } | { missionId: string } | { chapterId: string }, deploy: { id: string; pos: Pos }[]) =>
-    call<{ id: string; seed: number; units: Unit[] }>('POST', '/battles', { ...target, deploy }),
+    call<BattleStart>('POST', '/battles', { ...target, deploy }),
   /** Sends only the player's actions; the server replays the battle and decides XP and gold. Safe to retry. */
   battleFinish: (id: string, actions: BattleAction[]) =>
-    call<{ report: XpReport[]; gold: number; won: boolean; paid: boolean; unlocked?: string | null }>('POST', `/battles/${id}/finish`, { actions }),
+    call<BattleResult>('POST', `/battles/${id}/finish`, { actions }),
   /** the chapters in play order, and the ids of those this player has won */
   campaign: () => call<{ chapters: Chapter[]; cleared: string[] }>('GET', '/campaign'),
   createChapter: (c: ChapterInput & { mapId: string }) => call<Chapter[]>('POST', '/admin/chapters', c),

@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import { sceneGame } from './game';
 import {
   MAP_MAX_SIZE, MAP_MIN_SIZE, MAX_DEPLOY, MAX_HEIGHT, blankMap, inBounds, key, parseMap, resizeMap, samePos, validateMap,
   type MapData, type Pos, type Team,
@@ -48,13 +48,7 @@ export function startEditor() {
     s.pannable = false; // dragging paints here
     new Editor(s, root, first).start();
   }, editorInsets);
-  ownGame(new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: 'game',
-    backgroundColor: '#1b1712',
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-    scene: [scene],
-  }));
+  ownGame(sceneGame(scene, 'game', '#1b1712'));
 }
 
 class Editor {

@@ -2,18 +2,18 @@ import { CLASSES, DEFAULT_RACE, MAX_CLASS_LEVEL, MAX_MISSION_ENEMIES, RACES, all
 import type { CSSProperties } from 'react';
 import { raceName } from '../ui';
 import { Field, Num, Select } from './parts';
-import { draw, ws } from './state';
+import { ws } from './state';
 
 /**
  * Enemy placement on a map: one button per cell. A tap places an enemy with the brush, or removes it.
  * With `goal`, taps toggle goal cells instead and the brush is hidden.
- * `onChange` runs after every tap and must redraw.
+ * `onChange` runs after every tap.
  */
-export function EnemyEditor({ d, map: m, goal, onChange }: { d: { enemies: MissionEnemy[] }; map: MapData; goal?: Pos[]; onChange: () => void }) {
+export function EnemyEditor({ d, map: m, goal, onChange }: { d: { enemies: MissionEnemy[] }; map: MapData; goal?: Pos[]; onChange?: () => void }) {
   const brush = ws.brush;
   // classes follow the race: changing race keeps the class if that race can take it
-  const classes = Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(brush.raceId));
-  if (!classes.some(c => c.id === brush.classId)) brush.classId = classes[0].id;
+  const classesOf = (raceId: string) => Object.values(CLASSES).filter(c => allowedRaces(c.id).includes(raceId));
+  const classes = classesOf(brush.raceId);
 
   return (
     <div className="ws-board">
@@ -40,7 +40,7 @@ export function EnemyEditor({ d, map: m, goal, onChange }: { d: { enemies: Missi
                     else goal.push({ x, y });
                   } else if (foe) d.enemies.splice(i, 1);
                   else if (d.enemies.length < MAX_MISSION_ENEMIES) d.enemies.push({ classId: brush.classId, ...(brush.raceId !== DEFAULT_RACE ? { raceId: brush.raceId } : {}), level: brush.level, pos: { x, y } });
-                  onChange();
+                  onChange?.();
                 }}
               >
                 {foe ? `${CLASSES[foe.classId].name[0]}${foe.level}` : ''}
@@ -59,9 +59,9 @@ export function EnemyEditor({ d, map: m, goal, onChange }: { d: { enemies: Missi
         <p className="hint">{goal ? 'Tocca le caselle da raggiungere per vincere, toccale di nuovo per toglierle.' : 'Tocca una casella per piazzare il prossimo nemico, toccalo di nuovo per toglierlo.'}</p>
         {!goal && (
           <>
-            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={brush.raceId} set={v => { brush.raceId = v; draw(); }} /></Field>
-            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={brush.classId} set={v => { brush.classId = v; draw(); }} /></Field>
-            <Field label="Livello"><Num value={brush.level} set={v => { brush.level = v; draw(); }} min={1} max={MAX_CLASS_LEVEL} /></Field>
+            <Field label="Razza"><Select options={Object.values(RACES).map(r => [r.id, r.name] as [string, string])} value={brush.raceId} set={v => { brush.raceId = v; if (!classesOf(v).some(c => c.id === brush.classId)) brush.classId = classesOf(v)[0].id; }} /></Field>
+            <Field label="Classe"><Select options={classes.map(c => [c.id, c.name] as [string, string])} value={brush.classId} set={v => { brush.classId = v; }} /></Field>
+            <Field label="Livello"><Num value={brush.level} set={v => { brush.level = v; }} min={1} max={MAX_CLASS_LEVEL} /></Field>
           </>
         )}
         <p className="hint">

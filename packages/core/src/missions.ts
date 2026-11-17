@@ -88,17 +88,17 @@ export function deployTeam(roster: RosterUnit[], map: MapData, deploy: unknown, 
 }
 
 /** Starting units of a battle against the AI: the player's deployed units plus the enemies (a mission's, or the test battle's). */
-export function deployTestBattle(roster: RosterUnit[], map: MapData, deploy: unknown, enemies = testEnemies(roster, map)): Unit[] {
+export function deployBattle(roster: RosterUnit[], map: MapData, deploy: unknown, enemies = testEnemies(roster, map)): Unit[] {
   const units = [...deployTeam(roster, map, deploy, PLAYER), ...enemies];
   createBattle(map, units, 0); // checks cells and deploy count
   return units;
 }
 
 /**
- * Plays a test battle to its end: `actions` are the player's, in order; enemy turns come from the AI, as on the client.
+ * Plays a battle against the AI (test, mission or chapter) to its end: `actions` are the player's, in order; enemy turns come from the AI, as on the client.
  * Throws PlayerError if an action is illegal or the list stops before the battle is decided.
  */
-export function replayTestBattle(map: MapData, units: Unit[], seed: number, actions: unknown, goal?: Goal, protect?: string[]): BattleState {
+export function replayBattle(map: MapData, units: Unit[], seed: number, actions: unknown, goal?: Goal, protect?: string[]): BattleState {
   if (!Array.isArray(actions)) throw new PlayerError('Azioni non valide');
   let s = createBattle(map, units, seed, goal, protect);
   let next = 0;

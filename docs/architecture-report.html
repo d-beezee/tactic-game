@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tactics · Review architetturale</title>
+<style>
+  :root {
+    --bg: #f6f1e7; --surface: #fffaf0; --ink: #221b15; --dim: #6b5d4c; --line: #d9ccb6;
+    --accent: #8a6224; --code-bg: #efe6d4;
+    --alto: #b3401f; --alto-bg: #f9dfd4;
+    --medio: #8a5a00; --medio-bg: #f8e7b8;
+    --basso: #1f6f66; --basso-bg: #d3eee9;
+    --box: #fffaf0; --box-core: #e8f1e0; --box-server: #e3ecf4; --box-dom: #f8e7b8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110e; --surface: #221b16; --ink: #f1e4c6; --dim: #b8a88c; --line: #4a3a2c;
+      --accent: #e0ac4a; --code-bg: #2d241c;
+      --alto: #ff9a7a; --alto-bg: #4a2015;
+      --medio: #f2c14e; --medio-bg: #453509;
+      --basso: #7fd9cc; --basso-bg: #143a36;
+      --box: #2a211a; --box-core: #25321f; --box-server: #1f2c38; --box-dom: #453509;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Georgia, 'Iowan Old Style', 'Times New Roman', serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1, h2, h3, h4, th, .badge, nav, .meta, summary { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  h1 { font-size: clamp(28px, 6vw, 42px); line-height: 1.1; margin: 16px 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 26px; margin: 56px 0 12px; padding-top: 16px; border-top: 3px solid var(--accent); letter-spacing: -.01em; }
+  h3 { font-size: 20px; margin: 0 0 8px; }
+  h4 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 18px 0 4px; }
+  p { margin: 8px 0; }
+  a { color: var(--accent); }
+  code { font: 14px/1.4 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  .meta { color: var(--dim); font-size: 14px; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; margin: 16px 0 0; }
+  .lead li { margin: 8px 0; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+  .alto { color: var(--alto); background: var(--alto-bg); }
+  .medio { color: var(--medio); background: var(--medio-bg); }
+  .basso { color: var(--basso); background: var(--basso-bg); }
+  .scroll { overflow-x: auto; margin: 12px -16px; padding: 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; min-width: 620px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+  th button { all: unset; cursor: pointer; font: inherit; color: inherit; letter-spacing: inherit; }
+  th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  th button::after { content: ' ↕'; opacity: .5; }
+  th[aria-sort=ascending] button::after { content: ' ↑'; opacity: 1; }
+  th[aria-sort=descending] button::after { content: ' ↓'; opacity: 1; }
+  article { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line); padding: 18px 18px 14px; margin: 18px 0; }
+  article.s-alto { border-left-color: var(--alto); }
+  article.s-medio { border-left-color: var(--medio); }
+  article.s-basso { border-left-color: var(--basso); }
+  article header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+  article ul { margin: 4px 0; padding-left: 20px; }
+  article li { margin: 4px 0; }
+  .opts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 8px 0; }
+  .opt { border: 1px solid var(--line); padding: 10px 12px; font-size: 15px; }
+  .opt b { font-family: system-ui, sans-serif; display: block; margin-bottom: 2px; }
+  .opt.pick { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .opt small { color: var(--dim); display: block; margin-top: 4px; font-family: system-ui, sans-serif; }
+  .warn { border-left: 4px solid var(--medio); background: var(--medio-bg); padding: 8px 12px; margin: 10px 0; font-size: 15px; }
+  .unknown { border: 1px dashed var(--dim); padding: 10px 14px; font-size: 15px; }
+  ol.road { counter-reset: s; list-style: none; padding: 0; }
+  ol.road > li { counter-increment: s; position: relative; padding: 0 0 18px 52px; border-left: 2px solid var(--line); margin-left: 18px; }
+  ol.road > li::before { content: counter(s); position: absolute; left: -19px; top: -2px; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--bg); font: 700 16px/36px system-ui, sans-serif; text-align: center; }
+  ol.road > li:last-child { border-left-color: transparent; }
+  ol.road h3 { margin-bottom: 2px; }
+  .cost { font: 13px system-ui, sans-serif; color: var(--dim); }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; fill: var(--ink); }
+  svg .t { font-size: 14px; font-weight: 700; }
+  svg .s { font-size: 11.5px; fill: var(--dim); }
+  svg .g { font-size: 12px; font-weight: 700; letter-spacing: .08em; fill: var(--dim); }
+  svg rect.b { fill: var(--box); stroke: var(--line); stroke-width: 1.5; }
+  svg rect.core { fill: var(--box-core); }
+  svg rect.srv { fill: var(--box-server); }
+  svg rect.dom { fill: var(--box-dom); }
+  svg rect.grp { fill: none; stroke: var(--line); stroke-dasharray: 5 4; }
+  svg .a { stroke: var(--dim); stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+  svg .a.hot { stroke: var(--alto); stroke-dasharray: 4 3; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 13px system-ui, sans-serif; color: var(--dim); margin-top: 8px; }
+  .legend i { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; border: 1.5px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+
+<p class="meta">Review architetturale · 16 novembre 2026 · commit <code>83aece4</code> · 32 commit dal 9 novembre</p>
+<h1>Tactics: cosa ha smesso di reggere, e cosa no</h1>
+<p class="meta">Analisi di tutta la codebase: <code>packages/core</code>, <code>apps/client</code>, <code>apps/server</code>. Circa 6.000 righe di TypeScript, esclusi dati e documenti.</p>
+<nav aria-label="Sezioni">
+  <a href="#sintesi">Sintesi</a><a href="#mappa">Mappa</a><a href="#debiti">Debiti</a><a href="#dettaglio">Dettaglio</a><a href="#tenere">Cosa tenere</a><a href="#roadmap">Roadmap</a><a href="#ignoto">Non deducibile</a>
+</nav>
+
+<h2 id="sintesi">Sintesi</h2>
+<ol class="lead">
+  <li><strong>Il nucleo è sano e non va toccato.</strong> <code>packages/core</code> è puro, deterministico e testato (53 test); il server rigioca le azioni del client con lo stesso codice. È la scelta migliore di tutta la codebase.</li>
+  <li><strong>L'UI ha oggi due paradigmi.</strong> Menu e Officina sono React dal 14 novembre; HUD di battaglia, schieramento, editor mappe, cutscene e splash sono ancora DOM imperativo con tre helper <code>el()</code> diversi. È il debito che cresce di più a ogni feature di battaglia.</li>
+  <li><strong>Il server è un solo file da 612 righe senza test.</strong> <code>app.ts</code> contiene 36 route, SQL e la logica di pagamento. Non serve un'architettura a strati: serve dividerlo per area e coprire con test i due punti dove si assegnano oro e vittorie.</li>
+  <li><strong>L'Officina ha uno state manager fatto a mano</strong> (<code>ws</code> + <code>draw()</code>, 52 chiamate manuali). Funziona, ma è l'unico punto dove uno store vero costerebbe meno di quello che c'è.</li>
+  <li><strong>Nessun framework nuovo è necessario.</strong> React, Phaser, Hono e pg bastano. L'unica libreria che vale la pena valutare è uno store minimo (zustand, o <code>useSyncExternalStore</code> senza dipendenze). Router, Redux, ORM, WebSocket, ECS: no.</li>
+</ol>
+
+<h2 id="mappa">Mappa dell'architettura</h2>
+<p>Le frecce vanno da chi importa a chi è importato. Non ci sono cicli tra moduli: l'unico ritorno (schermate → menu) passa da <code>nav.ts</code>, che riceve la funzione del menu a runtime (<code>main.ts:15</code>).</p>
+<div class="scroll">
+<svg viewBox="0 0 900 640" role="img" aria-labelledby="mt md" style="min-width:680px">
+  <title id="mt">Diagramma dei moduli</title>
+  <desc id="md">Il client è diviso in shell React, schermate di gioco imperative e scena Phaser. Client e server dipendono entrambi dal pacchetto core. Il server parla con Postgres.</desc>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="context-stroke"/></marker></defs>
+
+  <rect class="grp" x="10" y="10" width="620" height="440" rx="6"/>
+  <text class="g" x="24" y="32">APPS/CLIENT · Vite</text>
+
+  <rect class="b" x="30" y="48" width="130" height="50" rx="4"/><text class="t" x="42" y="70">main.ts</text><text class="s" x="42" y="87">avvio, import lazy</text>
+  <rect class="b" x="190" y="48" width="130" height="50" rx="4"/><text class="t" x="202" y="70">nav.ts</text><text class="s" x="202" y="87">pila di cleanup</text>
+  <rect class="b dom" x="350" y="48" width="130" height="50" rx="4"/><text class="t" x="362" y="70">splash.ts</text><text class="s" x="362" y="87">innerHTML</text>
+
+  <text class="g" x="30" y="128">SHELL · React</text>
+  <rect class="b" x="30" y="138" width="170" height="62" rx="4"/><text class="t" x="42" y="160">menu/</text><text class="s" x="42" y="177">10 file · router a mano</text><text class="s" x="42" y="191">index.tsx 243 righe</text>
+  <rect class="b" x="220" y="138" width="170" height="62" rx="4"/><text class="t" x="232" y="160">workshop/</text><text class="s" x="232" y="177">8 file · Officina admin</text><text class="s" x="232" y="191">stato globale ws + draw()</text>
+
+  <text class="g" x="30" y="232">SCHERMATE DI GIOCO · DOM imperativo</text>
+  <rect class="b" x="30" y="242" width="105" height="50" rx="4"/><text class="t" x="40" y="264">battle.ts</text><text class="s" x="40" y="281">4 modalità</text>
+  <rect class="b" x="145" y="242" width="85" height="50" rx="4"/><text class="t" x="155" y="264">pvp.ts</text><text class="s" x="155" y="281">poll 1 s</text>
+  <rect class="b" x="240" y="242" width="110" height="50" rx="4"/><text class="t" x="250" y="264">campaign.ts</text><text class="s" x="250" y="281">cutscene+battle</text>
+  <rect class="b dom" x="360" y="242" width="110" height="50" rx="4"/><text class="t" x="370" y="264">cutscene.ts</text><text class="s" x="370" y="281">el() n. 3</text>
+  <rect class="b dom" x="480" y="242" width="130" height="50" rx="4"/><text class="t" x="490" y="264">editor.ts</text><text class="s" x="490" y="281">el() n. 2 · 286 righe</text>
+
+  <rect class="b" x="30" y="322" width="140" height="56" rx="4"/><text class="t" x="40" y="344">controller.ts</text><text class="s" x="40" y="361">input + animazioni</text>
+  <rect class="b dom" x="180" y="322" width="110" height="56" rx="4"/><text class="t" x="190" y="344">deploy.ts</text><text class="s" x="190" y="361">drag &amp; drop</text>
+  <rect class="b dom" x="300" y="322" width="110" height="56" rx="4"/><text class="t" x="310" y="344">hud.ts</text><text class="s" x="310" y="361">el() n. 1 · 245 righe</text>
+  <rect class="b" x="420" y="322" width="190" height="56" rx="4"/><text class="t" x="430" y="344">BattleScene.ts</text><text class="s" x="430" y="361">Phaser · 632 righe · tiles, sprites</text>
+
+  <rect class="b" x="30" y="396" width="580" height="40" rx="4"/><text class="t" x="42" y="421">api.ts · maps.ts · music.ts · sfx.ts · theme.ts</text><text class="s" x="400" y="421">servizi, stato a livello di modulo</text>
+
+  <rect class="grp" x="650" y="10" width="240" height="250" rx="6"/>
+  <text class="g" x="664" y="32">APPS/SERVER · Hono</text>
+  <rect class="b srv" x="670" y="48" width="200" height="74" rx="4"/><text class="t" x="682" y="70">app.ts</text><text class="s" x="682" y="87">612 righe · 36 route · SQL</text><text class="s" x="682" y="103">auth, battaglie, PvP, admin</text>
+  <rect class="b srv" x="670" y="140" width="200" height="46" rx="4"/><text class="t" x="682" y="161">db.ts</text><text class="s" x="682" y="177">migrazioni, tx()</text>
+  <rect class="b srv" x="670" y="204" width="200" height="40" rx="4"/><text class="t" x="682" y="229">Postgres</text>
+
+  <rect class="b core" x="10" y="500" width="880" height="126" rx="6"/>
+  <text class="g" x="24" y="522">PACKAGES/CORE · puro, nessun I/O, 53 test</text>
+  <text class="t" x="24" y="548">battle.ts</text><text class="s" x="24" y="565">apply(state, action)</text><text class="s" x="24" y="580">→ nuovo stato + eventi</text>
+  <text class="t" x="190" y="548">combat · pathfinding · ai</text><text class="s" x="190" y="565">regole, portata, IA nemica</text>
+  <text class="t" x="400" y="548">classes · races · items</text><text class="s" x="400" y="565">dati di gioco come tabelle</text>
+  <text class="t" x="600" y="548">roster · player · campaign</text><text class="s" x="600" y="565">progressione, validazione input</text>
+  <text class="t" x="600" y="596">testBattle.ts</text><text class="s" x="600" y="612">missioni, PvP, replay, paga</text>
+  <text class="t" x="190" y="596">map · rng · initiative</text><text class="s" x="190" y="612">seed deterministico</text>
+
+  <path class="a" d="M95 98v40"/>
+  <path class="a" d="M160 73h30"/>
+  <path class="a" d="M95 200v42"/>
+  <path class="a" d="M305 200v42"/>
+  <path class="a" d="M80 292v30"/>
+  <path class="a" d="M185 292l40 30"/>
+  <path class="a" d="M170 350h10"/>
+  <path class="a" d="M150 378c60 14 130 14 190 0"/>
+  <path class="a" d="M410 350h10"/>
+  <path class="a" d="M545 292v30"/>
+  <path class="a" d="M415 292l60 30"/>
+  <path class="a" d="M320 436v64"/>
+  <path class="a" d="M770 260v240"/>
+  <path class="a" d="M770 122v18"/>
+  <path class="a" d="M770 186v18"/>
+  <path class="a hot" d="M670 110C640 180 640 260 612 262"/>
+  <text class="s" x="640" y="290" style="fill:var(--alto)">importa demo.json</text>
+  <text class="s" x="640" y="304" style="fill:var(--alto)">dal client (app.ts:11)</text>
+  <path class="a" d="M610 416h40c14 0 20-10 20-30V122" />
+  <text class="s" x="640" y="440">/api · fetch + cookie</text>
+</svg>
+</div>
+<div class="legend">
+  <span><i style="background:var(--box-dom)"></i>DOM costruito a mano</span>
+  <span><i style="background:var(--box-core)"></i>logica pura</span>
+  <span><i style="background:var(--box-server)"></i>server</span>
+  <span><i style="border-color:var(--alto);border-style:dashed"></i>dipendenza da correggere</span>
+</div>
+
+<h4>Responsabilità</h4>
+<div class="scroll">
+<table>
+  <thead><tr><th>Modulo</th><th>Cosa fa</th><th>Dipende da</th></tr></thead>
+  <tbody>
+    <tr><td><code>packages/core</code></td><td>Tutte le regole: stato di battaglia, azioni, eventi, IA, classi, razze, oggetti, XP, validazione di mappe e capitoli. Nessun DOM, nessuna rete.</td><td>niente</td></tr>
+    <tr><td><code>BattleScene.ts</code></td><td>Scena isometrica Phaser: mappa, sprite, camera, rotazione, effetti. Espone metodi imperativi (<code>highlight</code>, <code>animateMove</code>, <code>impact</code>…).</td><td>core, Phaser, tiles, sprites, sfx, theme</td></tr>
+    <tr><td><code>controller.ts</code></td><td>Turno del giocatore: macchina a stati dell'input, chiamate a <code>apply()</code>, riproduzione degli eventi su scena e HUD, IA e avversario remoto.</td><td>core, BattleScene, hud</td></tr>
+    <tr><td><code>hud.ts</code>, <code>deploy.ts</code></td><td>Interfaccia di battaglia in HTML sopra il canvas: timeline, scheda unità, previsione, pulsanti, risultato, schieramento con drag &amp; drop.</td><td>core, scheletro in <code>index.html:19-31</code></td></tr>
+    <tr><td><code>battle.ts</code>, <code>pvp.ts</code>, <code>campaign.ts</code></td><td>Montano scena + schieramento + controller per ciascuna modalità e parlano con l'API.</td><td>tutti i precedenti, api, nav</td></tr>
+    <tr><td><code>menu/</code></td><td>Menu del giocatore in React: login, caserma, negozio, missioni, campagna, PvP.</td><td>api, maps, music</td></tr>
+    <tr><td><code>workshop/</code></td><td>Officina dell'admin in React: capitoli, missioni, musica, utenti.</td><td>api, maps, music, stato <code>ws</code></td></tr>
+    <tr><td><code>apps/server</code></td><td>Account e sessioni, salvataggi, avvio e verifica delle battaglie tramite replay, PvP a polling, CRUD admin.</td><td>core, Hono, pg</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="debiti">Debiti architetturali</h2>
+<p class="meta">Tocca un'intestazione per ordinare. Ordine iniziale: gravità.</p>
+<div class="scroll">
+<table id="debts">
+  <thead><tr>
+    <th aria-sort="none"><button type="button">#</button></th>
+    <th aria-sort="none"><button type="button">Debito</button></th>
+    <th aria-sort="descending"><button type="button">Gravità</button></th>
+    <th aria-sort="none"><button type="button">Costo</button></th>
+    <th>Dove</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>1</td><td><a href="#d1">Server in un solo file, senza test</a></td><td data-v="3"><span class="badge alto">Alto</span></td><td data-v="8">1 giorno</td><td><code>apps/server/src/app.ts</code></td></tr>
+    <tr><td>2</td><td><a href="#d2">HUD e schieramento in DOM imperativo</a></td><td data-v="2"><span class="badge medio">Medio</span></td><td data-v="12">1–2 giorni</td><td><code>hud.ts</code>, <code>deploy.ts</code></td></tr>
+    <tr><td>3</td><td><a href="#d3">Stato dell'Officina sincronizzato a mano</a></td><td data-v="2"><span class="badge medio">Medio</span></td><td data-v="5">½–1 giorno</td><td><code>workshop/state.ts</code></td></tr>
+    <tr><td>4</td><td><a href="#d4">Un'unica funzione per quattro modalità di battaglia</a></td><td data-v="2"><span class="badge medio">Medio</span></td><td data-v="3">2–3 ore</td><td><code>battle.ts</code>, <code>pvp.ts</code></td></tr>
+    <tr><td>5</td><td><a href="#d5">Contenuti in database, presentazione rimasta nel codice</a></td><td data-v="2"><span class="badge medio">Medio</span></td><td data-v="3">2–3 ore</td><td><code>cutscene.ts</code>, <code>battle.ts:87</code></td></tr>
+    <tr><td>6</td><td><a href="#d6">Riproduzione degli eventi dentro il controller</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="1">1 ora</td><td><code>controller.ts:235-313</code></td></tr>
+    <tr><td>7</td><td><a href="#d7">Editor mappe con pannello fatto a mano</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="4">½ giorno</td><td><code>editor.ts:148-225</code></td></tr>
+    <tr><td>8</td><td><a href="#d8">Colori duplicati tra CSS, Phaser e letterali</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="1">1 ora</td><td><code>theme.ts</code>, <code>style.css:4-23</code></td></tr>
+    <tr><td>9</td><td><a href="#d9">Tipi dell'API ricopiati a mano nel client</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="8">1 giorno</td><td><code>api.ts:12-32</code></td></tr>
+    <tr><td>10</td><td><a href="#d10">PvP a polling con replay completo a ogni azione</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="8">1 giorno</td><td><code>pvp.ts:11</code>, <code>app.ts:533-597</code></td></tr>
+    <tr><td>11</td><td><a href="#d11">Igiene del repository e nomi rimasti dal prototipo</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="0.5">30 minuti</td><td>radice, <code>app.ts:11</code>, <code>testBattle.ts</code></td></tr>
+    <tr><td>12</td><td><a href="#d12">Elenco degli sprite tenuto a mano</a></td><td data-v="1"><span class="badge basso">Basso</span></td><td data-v="1">1 ora</td><td><code>sprites.ts:5-9</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="dettaglio">Dettaglio di ogni problema</h2>
+
+<article id="d1" class="s-alto">
+  <header><h3>1. Server in un solo file, senza test</h3><span class="badge alto">Alto</span></header>
+  <h4>Perché aveva senso</h4>
+  <p>Con login, negozio e una battaglia, un unico <code>createApp()</code> che chiude su <code>pool</code> è il modo più rapido di partire: nessun passaggio di dipendenze, tutto visibile in una pagina.</p>
+  <h4>Segnali che ora è un limite</h4>
+  <ul>
+    <li><code>app.ts</code> è arrivato a 612 righe e 35 KB, con 36 route in una sola funzione (<code>app.ts:61-611</code>). È stato modificato in 12 commit su 32: ogni feature ci passa.</li>
+    <li>La logica che assegna oro, XP e unità è scritta in linea in una route, con due rami quasi uguali per capitolo e missione (<code>app.ts:232-244</code> e <code>app.ts:246-257</code>).</li>
+    <li>Il server non ha test: <code>apps/server/package.json</code> non ha uno script <code>test</code>, e <code>pnpm test</code> esegue solo il core. Proprio le parti con soldi e concorrenza (pagamento una volta sola, turni PvP, <code>FOR UPDATE</code>) sono quelle non verificate.</li>
+    <li>Nomi di colonna costruiti a stringa: <code>seen_${team.toLowerCase()}</code>, <code>deploy_${…}</code> (<code>app.ts:539-546</code>, <code>562-569</code>).</li>
+  </ul>
+  <h4>Perché alto</h4>
+  <p>Non per le dimensioni del file. Il rischio è che un errore qui paga due volte o blocca una partita PvP, e oggi nulla lo intercetta prima della produzione.</p>
+  <h4>Opzioni</h4>
+  <div class="opts">
+    <div class="opt"><b>Lascia com'è</b>Accettabile solo se il gioco resta tra amici e le route non cambiano più.<small>Costo: zero. Rischio: regressioni silenziose sui pagamenti.</small></div>
+    <div class="opt pick"><b>Dividi per area + 6–8 test di integrazione</b>Un file per area (<code>auth</code>, <code>player</code>, <code>battles</code>, <code>pvp</code>, <code>admin</code>), ciascuno una funzione che registra le sue route sulla stessa app. Test con <code>app.request()</code> di Hono contro il Postgres di <code>docker-compose.yml</code>.<small>Costo: circa 1 giorno. Nessuna libreria nuova oltre a vitest, già presente nel core.</small></div>
+    <div class="opt"><b>ORM o livello repository</b>Sconsigliato. L'SQL in linea è corto e leggibile, e <code>mutateIn()</code> (<code>app.ts:80-87</code>) è già l'unica astrazione che serve.<small>Costo: giorni. Beneficio: nessuno visibile nel codice.</small></div>
+  </div>
+  <h4>Cosa si sblocca</h4>
+  <p>Cambiare le ricompense, aggiungere una modalità o toccare il PvP senza rigiocare tutto a mano. I test da scrivere per primi: doppia chiamata a <code>/battles/:id/finish</code>, missione già vinta oggi, azione PvP fuori turno, azione PvP ripetuta con lo stesso indice.</p>
+</article>
+
+<article id="d2" class="s-medio">
+  <header><h3>2. HUD e schieramento in DOM imperativo</h3><span class="badge medio">Medio</span></header>
+  <h4>Perché aveva senso</h4>
+  <p>All'inizio la HUD era un banner e tre pulsanti sopra un canvas Phaser. <code>document.createElement</code> senza framework era la scelta giusta: zero dipendenze, nessun ciclo di render da coordinare con Phaser.</p>
+  <h4>Segnali che ora è un limite</h4>
+  <ul>
+    <li><strong>Due paradigmi nello stesso client.</strong> Menu e Officina sono React (commit <code>d58ab74</code>), la battaglia no. Un componente del menu non si può riusare nella HUD e viceversa.</li>
+    <li><strong>Tre helper <code>el()</code> con firme diverse</strong>: <code>hud.ts:20</code> (tag, classe, testo), <code>editor.ts:32</code> (tag, props, figli), <code>cutscene.ts:17</code> (tag, classe, testo, tipizzato). <code>deploy.ts</code> non ne usa nessuno e ripete <code>Object.assign(document.createElement(…))</code> nove volte (<code>deploy.ts:63-73</code>, <code>96-98</code>).</li>
+    <li><strong>Aggiornamento parziale scritto a mano.</strong> <code>hud.card()</code> ha due percorsi, crea oppure aggiorna con cinque <code>querySelector</code> (<code>hud.ts:96-103</code>), per non perdere l'animazione della barra PV. Ogni campo nuovo della scheda va aggiunto in entrambi.</li>
+    <li><strong>Re-render completo durante il drag.</strong> <code>Deploy.render()</code> ricostruisce tutta la barra delle unità e i pulsanti a ogni cambio di casella sotto il dito (<code>deploy.ts:112</code> chiama <code>render()</code>, righe <code>51-88</code>).</li>
+    <li><strong>Lo stile del risultato dipende da una regex sul testo italiano.</strong> <code>hud.ts:211-214</code> cerca "livello" e "oro" nelle righe prodotte in <code>battle.ts:75-77</code>. Cambiare una frase rompe colore e suono.</li>
+    <li><code>hud.buttons()</code> accetta un misto di descrizioni e nodi DOM (<code>hud.ts:174</code>) perché lo schieramento ci infila dentro la sua barra.</li>
+    <li>Lo scheletro è in <code>index.html:19-31</code> e la lista degli id è ripetuta in <code>hud.reset()</code> (<code>hud.ts:65-66</code>).</li>
+  </ul>
+  <h4>Perché medio e non alto</h4>
+  <p>Sono 245 righe che funzionano, con accessibilità curata. Il costo arriva dopo: abilità con descrizione, registro di battaglia, oggetti usabili, tooltip degli stati. Ciascuna oggi vuol dire altro <code>createElement</code> e un altro percorso di aggiornamento.</p>
+  <h4>Opzioni</h4>
+  <div class="opts">
+    <div class="opt"><b>Lascia com'è</b>Sensato se la HUD è finita. Unifica almeno i tre <code>el()</code> in uno.<small>Costo: 30 minuti per l'helper.</small></div>
+    <div class="opt pick"><b>HUD in React dietro la stessa facciata</b>Tieni l'oggetto <code>hud</code> con gli stessi metodi (<code>card</code>, <code>buttons</code>, <code>forecast</code>…): invece di toccare il DOM scrivono in uno store, e un componente <code>&lt;Hud/&gt;</code> lo legge. <code>controller.ts</code> non cambia.<small>Costo: 1–2 giorni, incluso lo schieramento. React è già nel bundle.</small></div>
+    <div class="opt"><b>HUD dentro Phaser</b>Sconsigliato: perdi testo nitido, accessibilità e CSS responsive, che oggi sono punti di forza.<small>Costo: alto. Beneficio: negativo.</small></div>
+  </div>
+  <div class="warn"><strong>Dove rischi di complicare troppo.</strong> Non portare in React il controller né la scena. Il confine giusto è: Phaser disegna, il controller decide, React mostra. Lo store serve solo per lo stato della HUD, non per <code>BattleState</code>, che vive già bene nel controller.</div>
+  <h4>Cosa si sblocca</h4>
+  <p>Scheda unità condivisa tra battaglia e caserma, tooltip e liste senza codice di sincronizzazione, risultato con dati strutturati al posto della regex, layout telefono/desktop che reagisce al resize (oggi è fissato all'apertura del menu, <code>hud.ts:184-185</code>).</p>
+</article>
+
+<article id="d3" class="s-medio">
+  <header><h3>3. Stato dell'Officina sincronizzato a mano</h3><span class="badge medio">Medio</span></header>
+  <h4>Perché aveva senso</h4>
+  <p>Il motivo è scritto nel file: le bozze devono sopravvivere quando il menu viene smontato per una prova di battaglia (<code>workshop/state.ts:1-3</code>). Lo stato di React non lo permette, quindi un oggetto globale fuori da React era la via più corta.</p>
+  <h4>Segnali che ora è un limite</h4>
+  <ul>
+    <li><code>ws</code> è un oggetto mutabile con 20 campi (<code>state.ts:38-66</code>); ogni modifica richiede una chiamata manuale a <code>draw()</code> o <code>touch()</code>. Nei componenti ce ne sono 52, di cui 25 in <code>Campaign.tsx</code>. Dimenticarne una lascia lo schermo fermo senza errori.</li>
+    <li>Lo stato viene modificato durante il render: <code>Campaign.tsx:46-48</code> azzera e ricrea <code>ws.cEdit</code> dentro il corpo del componente.</li>
+    <li><code>draw()</code> ridisegna tutta l'Officina da un solo <code>useReducer</code> alla radice (<code>state.ts:70-76</code>).</li>
+    <li>"Modificato" si calcola con <code>JSON.stringify</code> della bozza a ogni render (<code>state.ts:28-29</code>). Per ora le bozze sono piccole.</li>
+  </ul>
+  <h4>Opzioni</h4>
+  <div class="opts">
+    <div class="opt"><b>Lascia com'è</b>È usata da una persona sola, l'admin, e il requisito è rispettato. Scelta difendibile finché non compaiono bug di "non si aggiorna".<small>Costo: zero.</small></div>
+    <div class="opt pick"><b>Store esterno minimo</b>Uno store fuori da React vive oltre lo smontaggio (stesso requisito) e ridisegna da solo. Zustand pesa circa 1 KB; in alternativa 20 righe con <code>useSyncExternalStore</code>, senza dipendenze. Lo stesso store serve al punto 2.<small>Costo: ½–1 giorno. Le chiamate <code>draw()</code> spariscono.</small></div>
+    <div class="opt"><b>Redux, o libreria di form</b>Sconsigliato per un pannello admin con quattro bozze.<small>Costo: giorni e molto codice di contorno.</small></div>
+  </div>
+  <h4>Cosa si sblocca</h4>
+  <p>Nuovi strumenti nell'Officina senza ricordarsi <code>draw()</code>, e un solo modo di tenere lo stato in tutto il client se fai anche il punto 2. Da solo, questo intervento rende poco: fallo insieme al 2 oppure rimandalo.</p>
+</article>
+
+<article id="d4" class="s-medio">
+  <header><h3>4. Un'unica funzione per quattro modalità di battaglia</h3><span class="badge medio">Medio</span></header>
+  <h4>Perché aveva senso</h4>
+  <p><code>startTestBattle</code> era davvero una battaglia di prova. Missioni, campagna e prova dell'admin si sono aggiunte come parametri opzionali perché condividevano il 90% del flusso.</p>
+  <h4>Segnali che ora è un limite</h4>
+  <ul>
+    <li><code>startTestBattle(roster, map, mission?, run?)</code> (<code>battle.ts:22</code>) decide la modalità con catene di ternari su <code>ch</code>, <code>mission</code> e <code>run?.rehearsal</code> (<code>battle.ts:26-29</code>, <code>46-49</code>, <code>64-74</code>). La campagna la chiama passando <code>undefined</code> al posto della missione (<code>campaign.ts:19</code>).</li>
+    <li>Il nome non dice più cosa fa. Lo stesso vale nel core: <code>testBattle.ts</code> contiene missioni, reclute, schieramento PvP, replay e pagamento, e <code>replayTestBattle</code> verifica anche i capitoli (<code>app.ts:230</code>).</li>
+    <li>Il montaggio di scena e HUD è duplicato tra <code>battle.ts:31-39</code> e <code>pvp.ts:24-31</code>; la configurazione di <code>Phaser.Game</code> è ricopiata cinque volte (<code>battle.ts:93-99</code>, <code>pvp.ts:120-126</code>, <code>editor.ts:51-57</code>, <code>cutscene.ts:58-62</code>, <code>backdrop.ts:17-23</code>).</li>
+    <li>Due cicli di retry scritti separatamente con regole diverse (<code>battle.ts:66-85</code>, <code>pvp.ts:53-65</code>).</li>
+  </ul>
+  <h4>Opzioni</h4>
+  <div class="opts">
+    <div class="opt"><b>Lascia com'è</b>Regge fino alla prossima modalità. La quinta renderà i ternari illeggibili.<small>Costo: zero ora.</small></div>
+    <div class="opt pick"><b>Tre estrazioni piccole</b>(a) <code>mountBattle(map, units, onReady, insets?)</code> che crea gioco, scena, rotazione e ritratti; (b) una funzione <code>rewardLines(result)</code> che restituisce righe con un tipo (<code>{kind:'level'|'gold'|'note', text}</code>), così sparisce la regex del punto 2; (c) rinomina in <code>startBattle</code> e <code>core/missions.ts</code>.<small>Costo: 2–3 ore. Nessuna libreria.</small></div>
+    <div class="opt"><b>Gerarchia di classi "BattleMode"</b>Sconsigliato. Quattro modalità si descrivono con un oggetto di opzioni, come fa già <code>Controller</code> (<code>controller.ts:54-61</code>).<small>Costo: mezza giornata per più codice di prima.</small></div>
+  </div>
+  <h4>Cosa si sblocca</h4>
+  <p>Una nuova modalità (torneo, sfida settimanale) in un file suo, senza toccare le altre. È anche il passo che prepara la migrazione della HUD.</p>
+</article>
+
+<article id="d5" class="s-medio">
+  <header><h3>5. Contenuti in database, presentazione rimasta nel codice</h3><span class="badge medio">Medio</span></header>
+  <h4>Perché aveva senso</h4>
+  <p>Quando i capitoli erano file JSON nel core (<code>packages/core/src/campaign/</code>), tenere accanto nel client la tabella di chi parla era coerente: codice e contenuto uscivano insieme.</p>
+  <h4>Segnali che ora è un limite</h4>
+  <ul>
+    <li>I capitoli sono ora modificabili dall'admin e salvati in database (migrazione in <code>db.ts:153-183</code>), ma colore e ritratto di chi parla restano in una tabella fissa: <code>SPEAKERS</code> in <code>cutscene.ts:9-14</code>. Un personaggio nuovo scritto nell'Officina appare senza ritratto e senza colore.</li>
+    <li>L'etichetta del turno nel prologo nomina due personaggi nel codice: <code>'Nico'</code> e <code>'Teo'</code> (<code>battle.ts:87</code>), attivata dal flag <code>crt</code> del capitolo.</li>
+    <li><code>CAMPAIGN_SEED</code> resta nel core solo per la migrazione e per i test (<code>db.ts:173</code>, <code>core.test.ts:303</code>): due fonti per gli stessi capitoli, di cui una non più aggiornata.</li>
+  </ul>
+  <h4>Opzioni</h4>
+  <div class="opts">
+    <div class="opt"><b>Lascia com'è</b>Va bene se l'admin sei tu e i personaggi sono quelli. Diventa un limite appena scrivi il capitolo 5 con un volto nuovo.<small>Costo: zero.</small></div>
+    <div class="opt pick"><b>Ritratto sulla riga della cutscene</b>Aggiungi a <code>Line</code> un campo facoltativo <code>cls</code> (classe dello sprite) scelto nell'Officina; <code>SPEAKERS</code> resta come valore di ripiego. Per il prologo, un campo <code>turnNames</code> sul capitolo al posto del flag.<small>Costo: 2–3 ore tra core, Officina e una migrazione.</small></div>
+  </div>
+  <h4>Cosa si sblocca</h4>
+  <p>Capitoli nuovi interamente dall'Officina, senza rilascio.</p>
+</article>
+
+<article id="d6" class="s-basso">
+  <header><h3>6. Riproduzione degli eventi dentro il controller</h3><span class="badge basso">Basso</span></header>
+  <p><code>Controller.commit()</code> (<code>controller.ts:235-313</code>) applica l'azione e poi scorre gli eventi con dieci <code>if (ev.type === …)</code>, mescolando animazioni, suoni, attese e colori scritti come letterali (<code>'#ffc83d'</code>, <code>'#c6f27a'</code>, righe <code>273-298</code>). <code>runAi</code> e <code>runRemote</code> ripetono lo stesso anticipo dell'azione (<code>controller.ts:328-332</code> e <code>347-351</code>).</p>
+  <p><strong>Perché basso:</strong> la macchina a stati dell'input (<code>Mode</code>, <code>controller.ts:27-34</code>) è chiara e il file è a 358 righe. <strong>Quando intervenire:</strong> al prossimo tipo di evento. Sposta il ciclo in <code>playEvents(scene, hud, events)</code> con una tabella per tipo. Un'ora, nessuna libreria. Non serve un event bus.</p>
+</article>
+
+<article id="d7" class="s-basso">
+  <header><h3>7. Editor mappe con pannello fatto a mano</h3><span class="badge basso">Basso</span></header>
+  <p><code>editor.ts</code> costruisce il pannello con il suo <code>el()</code> (<code>editor.ts:148-186</code>) e lo tiene allineato con <code>syncInputs()</code> e <code>refresh()</code> (<code>188-225</code>), chiamati a mano dodici volte. La selezione dello strumento confronta due <code>JSON.stringify</code> (<code>editor.ts:204</code>).</p>
+  <p><strong>Perché basso:</strong> è usato solo dall'admin, è stabile (286 righe) e la parte difficile, dipingere sul canvas, resterebbe uguale. <strong>Consiglio:</strong> lascia com'è. Portalo in React, riusando i componenti di <code>workshop/parts.tsx</code>, solo se aggiungi strumenti (annulla, selezione, livelli). Mezza giornata.</p>
+</article>
+
+<article id="d8" class="s-basso">
+  <header><h3>8. Colori duplicati tra CSS, Phaser e letterali</h3><span class="badge basso">Basso</span></header>
+  <p><code>theme.ts:1</code> lo dichiara: "ogni colore rispecchia una variabile CSS, cambiali insieme" (<code>theme.ts:2-13</code> e <code>style.css:4-23</code>). In più ci sono letterali fuori dalla tabella: <code>controller.ts:273-298</code>, <code>BattleScene.ts:30</code>, <code>569</code>, <code>574</code>, e i colori di squadra ridisegnati in <code>scenes.ts:32-35</code>.</p>
+  <p><strong>Opzione:</strong> all'avvio leggi le variabili con <code>getComputedStyle</code> e costruisci <code>COLOR</code> da lì; sposta i letterali nella tabella. Un'ora. <strong>Oppure lascia:</strong> la palette cambia di rado e il commento avvisa.</p>
+</article>
+
+<article id="d9" class="s-basso">
+  <header><h3>9. Tipi dell'API ricopiati a mano nel client</h3><span class="badge basso">Basso</span></header>
+  <p><code>PvpState</code>, <code>Mission</code>, <code>Music</code> e le forme delle risposte sono scritte in <code>api.ts:12-32</code> e <code>75-79</code>; il server restituisce oggetti senza tipo (<code>app.ts:544-549</code>). Se una route cambia forma, il compilatore non avvisa.</p>
+  <p><strong>Opzioni:</strong> (a) lascia com'è: i tipi di dominio importanti arrivano già dal core; (b) sposta nel core le sei interfacce di risposta e usale da entrambi i lati, 1–2 ore; (c) client tipizzato di Hono (<code>hc</code>): richiede di riscrivere le route in catena, circa un giorno. <strong>Consiglio:</strong> (b), e solo insieme al punto 1.</p>
+</article>
+
+<article id="d10" class="s-basso">
+  <header><h3>10. PvP a polling con replay completo a ogni azione</h3><span class="badge basso">Basso</span></header>
+  <p>Il client interroga ogni secondo (<code>pvp.ts:11</code>); ogni richiesta apre una transazione con <code>FOR UPDATE</code> (<code>app.ts:526-552</code>). Ogni azione ricostruisce la battaglia dall'inizio (<code>app.ts:585-586</code>), fino a 2.000 azioni (<code>app.ts:25</code>). I tentativi di login falliti sono contati in memoria (<code>app.ts:64-65</code>, già segnato come <code>shortcut</code>).</p>
+  <p><strong>Perché basso:</strong> per un gioco a turni un secondo di ritardo è accettabile, il protocollo con indice è robusto ai retry e il replay garantisce che nessuno bari. <strong>Consiglio:</strong> lascia com'è. Se un giorno servisse, Server-Sent Events di Hono più <code>LISTEN/NOTIFY</code> di Postgres, senza cambiare il protocollo. WebSocket o un server di gioco dedicato sarebbero troppo per questo problema.</p>
+</article>
+
+<article id="d11" class="s-basso">
+  <header><h3>11. Igiene del repository e nomi rimasti dal prototipo</h3><span class="badge basso">Basso</span></header>
+  <ul>
+    <li>Tre archivi <code>.zip</code> di sprite sono versionati nella radice (<code>A_cleric_in_layered_white.zip</code> e altri due).</li>
+    <li>Il server importa un file del client con un percorso relativo: <code>import builtinMap from '../../client/src/maps/demo.json'</code> (<code>app.ts:11</code>). È l'unica dipendenza tra le due app. La mappa dimostrativa è un dato di gioco: il posto giusto è il core.</li>
+    <li><code>apps/server/src/main.ts:7-8</code>: il controllo "DATABASE_URL is not set" non può mai scattare, perché la riga sopra dà un valore di default.</li>
+    <li>Nomi "test": vedi punto 4.</li>
+  </ul>
+  <p><strong>Costo:</strong> 30 minuti in tutto.</p>
+</article>
+
+<article id="d12" class="s-basso">
+  <header><h3>12. Elenco degli sprite tenuto a mano</h3><span class="badge basso">Basso</span></header>
+  <p><code>sprites.ts:5-9</code> elenca a mano le cartelle in <code>public/units</code>, e il file lo segnala come <code>shortcut</code>. Con 306 file in <code>public/</code> e nuove razze in arrivo, una cartella dimenticata dà un segnaposto al posto dello sprite, senza errori.</p>
+  <p><strong>Opzione:</strong> uno script di 15 righe che legge <code>public/units</code> e scrive <code>sprites.gen.json</code> prima di <code>dev</code> e <code>build</code>. Un'ora. <strong>Oppure lascia:</strong> il costo di un errore è basso e visibile subito a schermo.</p>
+</article>
+
+<h2 id="tenere">Cosa tenere</h2>
+<p>Queste parti funzionano bene. Cambiarle sarebbe un costo senza ritorno.</p>
+<ul>
+  <li><strong>Il core puro con <code>apply(state, action) → stato + eventi</code></strong> (<code>packages/core/src/battle.ts:140</code>). Stesso codice su client, IA e server; seed deterministico; 53 test. Tutto il resto dell'architettura si appoggia qui.</li>
+  <li><strong>Il server come arbitro.</strong> Il client manda solo le azioni, il server le rigioca e decide XP e oro (<code>app.ts:181-182</code>, <code>230</code>). Risposta salvata per i retry (<code>app.ts:226-227</code>).</li>
+  <li><strong>Phaser solo per la scena.</strong> <code>BattleScene</code> ha un'interfaccia imperativa pulita e tocca il DOM in due soli punti (<code>follow</code>, <code>portrait</code>). A 632 righe è grande ma coesa. Soglia indicativa: se supera le 900, estrai gli sprite delle unità (<code>399-470</code>) e gli effetti (<code>549-618</code>).</li>
+  <li><strong>L'HTML sopra il canvas per l'interfaccia.</strong> Testo nitido, CSS responsive, attributi ARIA. Cambia il modo di costruirlo (punto 2), non la scelta.</li>
+  <li><strong><code>nav.ts</code></strong>: 24 righe, una pila di cleanup che evita il reload e tiene viva la musica. Non serve un router.</li>
+  <li><strong>Il "router" del menu</strong> come unione discriminata <code>Screen</code> (<code>menu/index.tsx:66-71</code>) con il controllo <code>stay()</code> contro le risposte in ritardo (<code>83-85</code>). Dieci schermate non giustificano React Router o una libreria di data fetching.</li>
+  <li><strong><code>api.ts</code></strong>: un <code>call()</code> di 12 righe e una tabella di endpoint. Niente axios, niente client generato.</li>
+  <li><strong>Migrazioni come array in <code>db.ts</code></strong> e SQL diretto con <code>pg</code>. Con 12 tabelle un ORM aggiungerebbe solo peso.</li>
+  <li><strong>Import lazy in <code>main.ts:9-13</code></strong>: Phaser e Strudel restano fuori dal primo download.</li>
+  <li><strong>I commenti <code>shortcut:</code></strong> che dichiarano il limite e quando superarlo (<code>hud.ts:184</code>, <code>app.ts:64</code>, <code>sprites.ts:3</code>). È il motivo per cui questa review ha trovato pochi debiti nascosti.</li>
+  <li><strong><code>style.css</code> in un solo file.</strong> 703 righe, sezioni commentate, variabili in testa. Se pesa, dividilo in file per sezione con <code>@import</code>; non serve Tailwind né CSS-in-JS.</li>
+</ul>
+
+<h2 id="roadmap">Roadmap</h2>
+<p>Ordine per rapporto tra rischio tolto e costo. Ogni passo è utile anche se ti fermi lì.</p>
+<ol class="road">
+  <li><h3>Pulizia</h3><span class="cost">30 minuti · debito 11</span>
+    <p>Togli gli zip dal repository, sposta <code>demo.json</code> nel core, elimina il controllo morto in <code>main.ts</code>.</p></li>
+  <li><h3>Test e divisione del server</h3><span class="cost">1 giorno · debiti 1 e 9</span>
+    <p>Prima i test di integrazione su pagamento e PvP, con il file ancora intero. Poi dividi <code>app.ts</code> per area: i test dicono se hai rotto qualcosa. Sposta nel core le interfacce delle risposte.</p></li>
+  <li><h3>Riordino delle modalità di battaglia</h3><span class="cost">2–3 ore · debiti 4 e 6</span>
+    <p><code>mountBattle()</code>, <code>rewardLines()</code> con righe tipizzate, <code>playEvents()</code>, nuovi nomi. Solo refactoring, nessuna libreria. Prepara il passo successivo.</p></li>
+  <li><h3>HUD e schieramento in React</h3><span class="cost">1–2 giorni · debito 2</span>
+    <p>Store minimo, componente <code>&lt;Hud/&gt;</code>, facciata <code>hud</code> invariata. Migra un pezzo alla volta: risultato, poi scheda, poi pulsanti, poi barra di schieramento. Fallo quando hai in programma una feature di HUD, non prima.</p></li>
+  <li><h3>Officina sullo stesso store</h3><span class="cost">½–1 giorno · debito 3</span>
+    <p>Solo dopo il passo 4, riusando lo stesso store. Senza il passo 4, lascia <code>ws</code> com'è.</p></li>
+  <li><h3>Quando capita</h3><span class="cost">a richiesta · debiti 5, 7, 8, 10, 12</span>
+    <p>Ritratti sulle righe di cutscene quando scrivi un personaggio nuovo. Editor in React se aggiungi strumenti. Colori e sprite generati se sbagli una volta. PvP: non toccare.</p></li>
+</ol>
+
+<h2 id="ignoto">Cosa non si deduce dal codice</h2>
+<div class="unknown">
+<ul>
+  <li><strong>Quanti giocatori ci sono e quanto è usato il PvP.</strong> La gravità del punto 10 e l'urgenza del punto 1 dipendono da questo. Il contatore dei login in memoria (<code>app.ts:64</code>) presuppone un solo processo; <code>railpack.json</code> non dice quante istanze girano.</li>
+  <li><strong>Prestazioni reali su telefono.</strong> Il re-render durante il drag (punto 2) è un segnale nel codice, non una misura: non ho profilato.</li>
+  <li><strong>Quante persone lavorano al progetto.</strong> La storia mostra un solo autore. Con più persone, i punti 1 e 3 salgono di gravità.</li>
+  <li><strong>Quali feature sono in programma.</strong> Le stime "cosa si sblocca" assumono che la battaglia continui a crescere. Se il gioco è vicino alla forma finale, il punto 2 scende a basso.</li>
+  <li><strong>Test nel browser.</strong> <code>battle.ts:36</code> espone <code>__scene</code> "per i test nel browser", ma nel repository quei test non ci sono.</li>
+  <li><strong>Le stime di costo</strong> sono per una persona che conosce già il codice, e non includono la verifica manuale su dispositivi.</li>
+</ul>
+</div>
+<p class="meta">Metodo: lettura diretta dei sorgenti di client, core e server; grafo degli import; storia git. Non ho eseguito l'app né i test.</p>
+
+</main>
+<script>
+(function () {
+  var table = document.getElementById('debts'), body = table.tBodies[0];
+  var heads = table.tHead.rows[0].cells;
+  var val = function (row, i) {
+    var c = row.cells[i], v = c.getAttribute('data-v');
+    return v !== null ? parseFloat(v) : (isNaN(parseFloat(c.textContent)) ? c.textContent.trim().toLowerCase() : parseFloat(c.textContent));
+  };
+  Array.prototype.forEach.call(heads, function (th, i) {
+    var btn = th.querySelector('button');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var dir = th.getAttribute('aria-sort') === 'descending' ? 'ascending' : 'descending';
+      Array.prototype.forEach.call(heads, function (h) { if (h.hasAttribute('aria-sort')) h.setAttribute('aria-sort', 'none'); });
+      th.setAttribute('aria-sort', dir);
+      var rows = Array.prototype.slice.call(body.rows);
+      rows.sort(function (a, b) {
+        var x = val(a, i), y = val(b, i);
+        var r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'it');
+        return dir === 'ascending' ? r : -r;
+      });
+      rows.forEach(function (r) { body.appendChild(r); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

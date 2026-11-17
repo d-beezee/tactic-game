@@ -1,14 +1,14 @@
 // The Officina's state. It lives outside React on purpose: drafts outlive a trip to the game menu
 // and a rehearsal battle, when the whole menu is unmounted. A reload asks first.
-// Components read `ws`, change it in place, then call draw() (or touch() after an edit to a draft).
+// Components read `ws` and change it in place: the store redraws the Officina by itself.
 import {
   CLASSES, DEFAULT_RACE, allowedRaces,
   type Chapter, type ChapterInput, type Goal, type MapData, type MissionEnemy, type Pos, type RosterUnit,
 } from '@tactics/core';
-import { useReducer } from 'react';
 import { api, ApiError, type Account, type Mission, type User } from '../api';
 import { allMaps, loadMaps } from '../maps';
 import { getLibrary, setLibrary } from '../music';
+import { createStore, toRaw } from '../store';
 
 export type Tool = 'campaign' | 'missions' | 'music' | 'users';
 
@@ -35,8 +35,11 @@ export type ChapterDraft = Omit<ChapterInput, 'goal' | 'unlock'> & {
 };
 export type TrackDraft = { id: string | null; name: string; code: string };
 
-export const ws = {
-  ctx: null! as WorkshopCtx,
+/** What the menu hands the Officina; kept apart from the store, since a new one arrives on every render. */
+export let ctx: WorkshopCtx;
+export const setCtx = (c: WorkshopCtx) => { ctx = c; };
+
+const store = createStore({
   tool: 'campaign' as Tool,
   /** true until the open tool has its data */
   loading: true,
@@ -63,24 +66,23 @@ export const ws = {
   openLine: '',
   /** what the preview is playing: a track id, or 'draft' */
   playing: null as string | null,
-};
+});
+export const ws = store.state;
+/** Called by the Officina's root component: it redraws on every change to `ws`. */
+export const useWorkshop = store.useStore;
+
+/** The drafts each tool's save bar watches. */
+const drafts = () => ws.tool === 'campaign' ? [ws.cEdit] : ws.tool === 'missions' ? [ws.mEdit] : ws.tool === 'music' ? [ws.tEdit, ws.slots] : [];
+// "saved at" holds until the open draft changes again
+store.subscribe(() => { if (ws.savedAt && drafts().some(dirty)) ws.savedAt = ''; });
 
 addEventListener('beforeunload', e => { if ([ws.mEdit, ws.cEdit, ws.tEdit, ws.slots].some(dirty)) e.preventDefault(); });
-
-let redraw = () => {};
-/** Redraws the Officina after a change to `ws`. */
-export const draw = () => redraw();
-/** Redraws after an edit to a draft: the "saved at" note no longer holds. */
-export const touch = () => { ws.savedAt = ''; draw(); };
-/** Called by the Officina's root component, so draw() reaches it. */
-export const useDraw = () => { [, redraw] = useReducer((n: number) => n + 1, 0); };
 
 let loads = 0; // newest load wins when they overlap
 /** Opens a tool and loads what it shows. Drafts of the other tools stay as they are. */
 export const go = async (to: Tool) => {
   const gen = ++loads;
   Object.assign(ws, { tool: to, error: '', pending: '', ask: null, open: false, loading: true });
-  draw();
   try {
     if (to === 'users') ws.users = await api.users();
     else {
@@ -90,12 +92,11 @@ export const go = async (to: Tool) => {
     }
   } catch (e) {
     if (gen !== loads) return;
-    if (e instanceof ApiError && e.status === 401) return ws.ctx.auth();
+    if (e instanceof ApiError && e.status === 401) return ctx.auth();
     ws.error = (e as Error).message;
   }
   if (gen !== loads) return;
   ws.loading = false;
-  draw();
 };
 /** The Officina left the screen: a load still running must not show stale data on the way back. */
 export const leave = () => { loads++; ws.loading = true; };
@@ -108,20 +109,18 @@ export const mutate = async <T>(request: Promise<T>, ok: (r: T) => void, saved =
     ok(r);
     ws.savedAt = saved ? new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) return ws.ctx.auth();
+    if (e instanceof ApiError && e.status === 401) return ctx.auth();
     ws.error = (e as Error).message;
   }
-  draw();
 };
 
 /** Runs `fn`, which replaces the open draft, after asking when that draft has unsaved changes. */
 export const replace = (current: Edit<unknown> | null, fn: () => void) => {
   if (!dirty(current)) return fn();
   ws.ask = fn;
-  draw();
 };
 
-export const clone = <T>(v: T): T => structuredClone(v);
+export const clone = <T>(v: T): T => structuredClone(toRaw(v));
 export const matches = (q: string, ...text: string[]) => !q.trim() || text.some(t => t.toLowerCase().includes(q.trim().toLowerCase()));
 export const mapName = (id: string) => allMaps().find(m => m.id === id)?.name;
 export const trackName = (id: string | null) => getLibrary().tracks.find(t => t.id === id)?.name;

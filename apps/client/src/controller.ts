@@ -3,9 +3,9 @@ import {
   planTurn, reachable, samePos, sideOf, unitActions, unitById, type ActionDef, type BattleAction, type BattleState, type Dir, type Pos, type Team, type Unit,
 } from '@tactics/core';
 import type { BattleScene } from './BattleScene';
-import { hud, type Forecast } from './hud';
-import { play } from './sfx';
+import { hud, type Forecast, type ResultLine } from './hud';
 import { toMenu } from './nav';
+import { playEvents } from './playEvents';
 import { COLOR } from './theme';
 
 const actionColor = (a: ActionDef) => (a.effect === 'teleport' || a.effect === 'swap' ? COLOR.reach : a.targets === 'ally' ? COLOR.mend : COLOR.strike);
@@ -50,7 +50,7 @@ export class Controller {
    * PvP: `remote` hands out the opponent's actions one at a time, `onAction` sends each of ours, `onResign` gives up.
    */
   constructor(
-    private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<string[]>,
+    private scene: BattleScene, private state: BattleState, private onEnd: (actions: BattleAction[]) => Promise<ResultLine[]>,
     private opts: {
       me?: Team; remote?: () => Promise<BattleAction>; onAction?: (a: BattleAction) => void; onResign?: () => void;
       /** ribbon text for one of our turns (prologue: the brothers take turns) */
@@ -247,66 +247,7 @@ export class Controller {
       console.error(e);
       return;
     }
-    const byId = (id: string) => this.state.units.find(u => u.id === id)!;
-    const actor = this.unit;
-    for (const ev of this.state.events) {
-      if (ev.type === 'move') {
-        await this.scene.animateMove(ev.unitId, ev.path);
-        // the rules keep the old facing after a move; the natural default is the direction of the last step
-        if (ev.path.length > 1) this.facing = facingToward(ev.path[ev.path.length - 2], ev.path[ev.path.length - 1]);
-      }
-      if (ev.type === 'damage' || ev.type === 'heal') this.facing = this.unit.facing;
-      if (ev.type === 'damage' || ev.type === 'heal') {
-        // the target's card shows the HP before the hit, then drops (or fills) with a trail
-        const target = byId(ev.unitId), sign = ev.type === 'damage' ? 1 : -1;
-        hud.card({ ...target, hp: Math.min(target.stats.maxHp, target.hp + sign * ev.amount) });
-        if (ev.type === 'damage') {
-          await this.scene.lunge(actor.id, target.pos);
-          this.scene.impact(target, ev.amount, ev.side);
-        } else this.scene.healFx(target, ev.amount);
-        this.scene.syncUnit(target);
-        hud.card(target);
-      }
-      if (ev.type === 'ko') this.scene.koFx(byId(ev.unitId));
-      if (ev.type === 'status' && ev.on) {
-        play('select');
-        this.scene.popText(byId(ev.unitId), STATUSES[ev.statusId].name, '#ffc83d');
-        this.scene.syncUnit(byId(ev.unitId));
-        await wait(300);
-      }
-      if (ev.type === 'tick') {
-        const t = byId(ev.unitId);
-        if (ev.amount > 0) this.scene.healFx(t, ev.amount);
-        else { play('hit'); this.scene.popText(t, String(-ev.amount), '#c6f27a'); }
-        this.scene.syncUnit(t);
-        await wait(450);
-      }
-      if (ev.type === 'push') {
-        await this.scene.animateMove(ev.unitId, ev.path);
-        if (ev.damage) {
-          play('heavy');
-          this.scene.popText(byId(ev.unitId), String(ev.damage), '#ffffff', ev.path.length === 1 ? 'Urto' : 'Caduta');
-        }
-      }
-      if (ev.type === 'dodge') {
-        play('step');
-        this.scene.popText(byId(ev.unitId), 'Schivata', '#7fd3e6');
-      }
-      if (ev.type === 'skip') {
-        const t = byId(ev.unitId);
-        this.scene.focus(t.pos);
-        this.scene.popText(t, 'Stordito', '#ffc83d');
-        await wait(700);
-      }
-      if (ev.type === 'teleport' || ev.type === 'swap') {
-        for (const id of ev.type === 'swap' ? [ev.unitId, ev.otherId] : [ev.unitId]) {
-          this.scene.syncUnit(byId(id));
-          this.scene.dropIn(id);
-        }
-        await wait(350);
-      }
-    }
-    for (const u of this.state.units) this.scene.syncUnit(u);
+    this.facing = await playEvents(this.scene, this.state, this.unit, this.facing);
     if (a.type !== 'end') this.scene.showFacing(this.unit.id, this.facing);
     if (this.state.events.some(e => e.type === 'damage' || e.type === 'heal' || e.type === 'push')) await wait(900);
     hud.card(this.unit);
@@ -317,6 +258,14 @@ export class Controller {
     return resign ? [{ label: 'Arrenditi', icon: 'back' as const, onClick: () => confirm('Arrenderti? La vittoria va all\'avversario.') && resign() }] : [];
   }
 
+  /** Before an opponent's action lands, its target lights up for a moment. */
+  private async showTarget(a: BattleAction) {
+    if (a.type !== 'act') return;
+    const action = unitActions(this.unit).find(x => x.id === a.actionId)!;
+    this.scene.highlight([a.target], actionColor(action));
+    await wait(350);
+  }
+
   /** PvP: plays the opponent's actions as they arrive, until their unit ends its turn. */
   private async runRemote() {
     this.mode = { k: 'busy' };
@@ -325,11 +274,7 @@ export class Controller {
     this.scene.focus(this.unit.pos);
     for (;;) {
       const a = await this.opts.remote!();
-      if (a.type === 'act') {
-        const action = unitActions(this.unit).find(x => x.id === a.actionId)!;
-        this.scene.highlight([a.target], actionColor(action));
-        await wait(350);
-      }
+      await this.showTarget(a);
       await this.commit(a);
       hud.buttons(this.resignButton());
       if (this.state.winner || a.type === 'end') break;
@@ -344,11 +289,7 @@ export class Controller {
     this.scene.focus(this.unit.pos);
     await wait(500);
     for (const a of planTurn(this.state)) {
-      if (a.type === 'act') {
-        const action = unitActions(this.unit).find(x => x.id === a.actionId)!;
-        this.scene.highlight([a.target], actionColor(action));
-        await wait(350);
-      }
+      await this.showTarget(a);
       await this.commit(a);
       if (this.state.winner) break;
       await wait(200);

@@ -1,5 +1,5 @@
 import { facingToward, missionUnits, unitFromRoster, type Chapter, type RosterUnit } from '@tactics/core';
-import { startTestBattle } from './battle';
+import { startBattle } from './battle';
 import { playCutscene } from './cutscene';
 import { toMenu } from './nav';
 
@@ -16,7 +16,7 @@ export async function startChapter(roster: RosterUnit[], ch: Chapter, rehearse?:
   const world = { map, units: [...heroes, ...enemies] };
 
   await playCutscene(ch.before, world);
-  startTestBattle(roster, map, undefined, {
+  startBattle(roster, map, { kind: 'chapter', run: {
     chapter: ch,
     rehearsal: !!rehearse,
     trackId: rehearse?.trackId,
@@ -25,5 +25,5 @@ export async function startChapter(roster: RosterUnit[], ch: Chapter, rehearse?:
       if (rehearse) rehearse.back();
       else toMenu('campaign');
     },
-  });
+  } });
 }

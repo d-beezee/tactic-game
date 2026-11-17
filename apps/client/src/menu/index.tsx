@@ -17,7 +17,7 @@ import { Shop } from './Shop';
 
 /** Where the menu sends the player when a game starts. */
 export interface Go {
-  testBattle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void;
+  battle: (roster: RosterUnit[], map: MapData, mission?: Mission) => void;
   pvp: (roster: RosterUnit[], id: string, state: PvpState) => void;
   campaign: (roster: RosterUnit[], chapter: Chapter) => void;
   editor: () => void;
@@ -174,7 +174,7 @@ function Menu({ go, after }: { go: Go; after?: After }) {
     if (room && still()) show({ at: 'wait', id: room.id });
   };
 
-  const fight = (map: MapData, mission?: Mission) => { leaveMenu(); go.testBattle(player!.roster, map, mission); };
+  const fight = (map: MapData, mission?: Mission) => { leaveMenu(); go.battle(player!.roster, map, mission); };
 
   if (screen.at === 'loading') return <div className="menu-main"><p className="hint">Caricamento…</p></div>;
   if (screen.at === 'failed') return (

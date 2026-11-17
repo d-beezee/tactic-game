@@ -1,12 +1,11 @@
-import { parseMap, type MapData } from '@tactics/core';
+import { DEMO_MAP, parseMap, type MapData } from '@tactics/core';
 import { api } from './api';
-import demo from './maps/demo.json';
 
 /** Where the editor kept maps before they moved to the server. */
 const LEGACY_KEY = 'tactics.maps';
 
 /** Maps shipped with the game: read-only, the editor saves copies. */
-export const BUILTIN_MAPS: MapData[] = [demo as MapData];
+export const BUILTIN_MAPS: MapData[] = [DEMO_MAP];
 export const isBuiltin = (id: string) => BUILTIN_MAPS.some(m => m.id === id);
 
 /** Maps saved on the server, as of the last loadMaps, saveMap or deleteMap. */

@@ -1,17 +1,17 @@
 import { api } from '../api';
 import { Btn, Confirm, confirmFirst, Frame } from './parts';
-import { draw, matches, mutate, ws } from './state';
+import { ctx, matches, mutate, ws } from './state';
 
 export function Users() {
   const q = ws.queries.users ?? '';
   const search = (
-    <input type="search" className="field ws-search" placeholder="Cerca per email" aria-label="Cerca per email" value={q} onChange={e => { ws.queries.users = e.target.value; draw(); }} />
+    <input type="search" className="field ws-search" placeholder="Cerca per email" aria-label="Cerca per email" value={q} onChange={e => { ws.queries.users = e.target.value; }} />
   );
   return (
     <Frame title="Utenti" actions={search}>
       <div className="ws-users">
         {ws.users.filter(u => matches(q, u.email)).map(u => {
-          const me = u.email === ws.ctx.player.email;
+          const me = u.email === ctx.player.email;
           const verb = u.admin ? 'Togli admin' : 'Rendi admin';
           return (
             <div key={u.id} className="ws-user">
