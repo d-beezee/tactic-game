@@ -6,6 +6,7 @@ const SETS: Record<string, string[]> = {
   [DEFAULT_RACE]: ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage', 'thief', 'arcanist', 'assassin', 'warlock'],
   corvid: ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage', 'thief', 'arcanist', 'assassin', 'warlock', 'lancer', 'stormcaller'],
   peatfolk: ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage', 'thief', 'arcanist', 'assassin', 'warlock', 'green_mage', 'green_knight', 'druid'],
+  lumen: ['warrior', 'archer', 'cleric', 'paladin', 'ranger', 'sage', 'thief', 'arcanist', 'assassin', 'warlock', 'lampwright', 'beacon'],
 };
 
 /** Folder of a unit's sprites: its race's art, else the human art of its class, else null (placeholder body). */
