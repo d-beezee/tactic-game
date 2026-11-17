@@ -1,7 +1,7 @@
 import { CLASSES, key, raceOf, samePos, unitFromRoster, type MapData, type Pos, type RosterUnit, type Team, type Unit } from '@tactics/core';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { BattleScene } from './BattleScene';
-import { Tray } from './Hud';
+import { Tray } from './HudView';
 import { spriteDir } from './sprites';
 import { hud } from './hud';
 import { toMenu } from './nav';

@@ -3,7 +3,7 @@ import type { BattleState, Team, Unit } from '@tactics/core';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { Dirs, Hud } from './Hud';
+import { Dirs, Hud } from './HudView';
 import { hudStore, resetHud, type Btn, type Forecast, type Look, type ResultLine, type Slot } from './hudStore';
 import { music } from './music';
 import { play, type Sound } from './sfx';
